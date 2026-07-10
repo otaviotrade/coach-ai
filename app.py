@@ -22,20 +22,25 @@ nome_modelo = "gpt-4o-mini"
 def processar_imagem_openai(arquivo_imagem):
     return base64.b64encode(arquivo_imagem.getvalue()).decode('utf-8')
 
-# --- 🧠 Sincronização do Histórico Persistente com o Supabase ---
+# --- Sincronização do Histórico Persistente com o Supabase ---
 if "mensagens" not in st.session_state:
     try:
-        historico_banco = supabase.table("historico_conversas").select("role", "content").order("id", desc=False).limit(50).execute()
+        # Reduzido o limite para as últimas 30 mensagens para economizar tokens de contexto
+        historico_banco = supabase.table("historico_conversas").select("role", "content").order("id", desc=False).limit(30).execute()
         st.session_state.mensagens = historico_banco.data if historico_banco.data else []
     except Exception:
         st.session_state.mensagens = []
 
-# --- 📚 Carregamento Permanente de Artigos do Supabase ---
+# --- 📚 Carregamento com Blindagem contra estouro de TPM ---
 if "contexto_artigos" not in st.session_state:
     try:
-        # Lógica: O Python consulta a tabela de artigos e unifica os textos para o contexto da IA
-        artigos_banco = supabase.table("artigos_metodologia").select("conteudo_texto").execute()
-        st.session_state.contexto_artigos = "\n\n".join([art["conteudo_texto"] for art in artigos_banco.data]) if artigos_banco.data else ""
+        artigos_banco = supabase.table("artigos_metodologia").select("conteudo_texto").order("id", desc=True).execute()
+        if artigos_banco.data:
+            texto_unificado = "\n\n".join([art["conteudo_texto"] for art in artigos_banco.data])
+            # BLINDAGEM: Corta o texto em 80k caracteres (~18k tokens) para impedir o erro 429 de Rate Limit
+            st.session_state.contexto_artigos = texto_unificado[:80000]
+        else:
+            st.session_state.contexto_artigos = ""
     except Exception:
         st.session_state.contexto_artigos = ""
 
@@ -91,6 +96,7 @@ with aba_chat:
                     if st.session_state.contexto_artigos != "":
                         prompt_enriquecido = f"Base teórica de artigos científicos para periodização:\n{st.session_state.contexto_artigos}\n\nInstrução do aluno: {prompt_enriquecido}"
 
+                    # Motor 1: Processamento de Múltiplos Arquivos GPX
                     if arquivos_gpx:
                         dados_acumulados = "\n\n[DADOS BRUTOS EXTRAÍDOS DE TODOS OS ARQUIVOS GPX SUBIDOS]:\n"
                         for arquivo in arquivos_gpx:
@@ -184,7 +190,6 @@ with aba_chat:
                     for msg_historico in st.session_state.mensagens[:-1]:
                         mensagens_api.append({"role": msg_historico["role"], "content": msg_historico["content"]})
                     
-                    # Correção: Injeção do prompt atual contendo os artigos unificados do Supabase
                     mensagens_api.append({"role": "user", "content": conteudo_mensagem})
 
                     tools = [
@@ -309,7 +314,7 @@ with aba_pr:
             except Exception as e:
                 st.error(f"Erro ao salvar no banco: {e}")
 
-# --- Aba 3: Base de Conhecimento (Gravação Permanente no Supabase) ---
+# --- Aba 3: Base de Conhecimento ---
 with aba_docs:
     st.header("Diretório de Artigos")
     st.write("Suba PDFs com metodologias de treino.")
@@ -321,15 +326,14 @@ with aba_docs:
             for pagina in leitor.pages:
                 texto_extraido += pagina.extract_text()
             
-            # Mudança Lógica: O Python agora executa a inserção física permanente do texto extraído no Supabase
             dados_artigo = {
                 "nome_arquivo": arquivo_pdf.name,
                 "conteudo_texto": texto_extraido
             }
             supabase.table("artigos_metodologia").insert(dados_artigo).execute()
             
-            # Atualiza o contexto da sessão imediatamente sem precisar recarregar a página
-            st.session_state.contexto_artigos += f"\n\n{texto_extraido}"
+            # Garante o teto de tamanho na memória local imediata após o upload
+            st.session_state.contexto_artigos = f"{texto_extraido}\n\n{st.session_state.contexto_artigos}"[:80000]
             st.success(f"📚 Artigo '{arquivo_pdf.name}' lido e persistido permanentemente no Supabase!")
         except Exception as e:
             st.error(f"Erro ao ler e persistir o PDF: {e}")
