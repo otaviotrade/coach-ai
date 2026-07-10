@@ -1,0 +1,6 @@
+streamlit
+supabase
+openai
+gpxpy
+PyPDF2
+
