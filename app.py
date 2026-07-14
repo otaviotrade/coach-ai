@@ -38,7 +38,6 @@ if "mensagens" not in st.session_state:
 # --- ⚡ Carregamento Otimizado de Artigos Científicos (ANTI-CONGELAMENTO) ---
 if "contexto_artigos" not in st.session_state:
     try:
-        # Limitado a buscar apenas os 3 artigos mais recentes no startup para não travar a rede e a memória
         artigos_banco = supabase.table("artigos_metodologia").select("conteudo_texto").order("id", desc=True).limit(3).execute()
         if artigos_banco.data:
             texto_unificado = "\n\n".join([art["conteudo_texto"] for art in artigos_banco.data if art.get("conteudo_texto")])
@@ -255,6 +254,9 @@ with aba_chat:
                                 
                         prompt_enriquecido += dados_acumulados
 
+                    # CORREÇÃO DO BUG: Inicializa conteudo_mensagem antes de testar o if fotos_treino
+                    conteudo_mensagem = [{"type": "text", "text": prompt_enriquecido}]
+
                     if fotos_treino:
                         for photo in fotos_treino:
                             imagem_base64 = processar_imagem_openai(photo)
@@ -467,7 +469,7 @@ with aba_pr:
         botao_salvar = st.form_submit_button("Salvar PR no Banco")
         
         if botao_salvar:
-            if not movimento.strip():
+            if not movimiento.strip():
                 st.error("Por favor, digite o nome do movimento antes de salvar.")
             else:
                 dados_pr = {
