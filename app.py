@@ -364,35 +364,35 @@ with aba_chat:
                         "científico de criação é 100% focado em Corrida, e que o CrossFit é usado apenas para monitorar o seu estresse e recuperação.\n\n"
                         "💡 SOBRE O CICLO ATUAL:\n"
                         "Analise o histórico e a periodização para calcular as fases e semanas de corrida, ajustando o volume de corrida de acordo com o desgaste acumulado no CrossFit."
-                        "\n\n⚠️ REQUISITO DE SEGURANÇA CRÍTICO:\n"
-                        "Se o usuário estiver apenas fazendo perguntas, tirando dúvidas, batendo papo ou perguntando sobre sua planilha de periodização/semanas, "
-                        "responda diretamente em texto puro. NUNCA chame a ferramenta 'estruturar_analise_treino' para conversas comuns!"
+                        "\n\n⚠️ REQUISITO DE SEGURANÇA CRÍTICO CONTRA ALUCINAÇÃO DE REGISTRO:\n"
+                        "- Se o usuário pedir para você criar, prescrever, planejar, sugerir ou detalhar um treino para o futuro (ex: 'crie meu treino de quinta', 'o que eu treino amanhã?'), "
+                        "você deve gerar a prescrição e os detalhes do treino diretamente em TEXTO PURO no chat. NUNCA chame a função 'registrar_treino_realizado_no_banco' para treinos futuros!\n"
+                        "- A função 'registrar_treino_realizado_no_banco' serve EXCLUSIVAMENTE para quando o atleta estiver enviando dados de telemetria, GPX, fotos ou um relato detalhado de um treino que ele JÁ CONCLUIU (passado), para salvar no banco de dados."
                     )
                     
-                    # Garantir que a diretriz global de brevidade/simplicidade de escrita do usuário seja cumprida
                     mensagens_api.append({"role": "system", "content": contexto_sistema})
                     
                     for msg_historico in st.session_state.mensagens[:-1]:
                         mensagens_api.append({"role": msg_historico["role"], "content": msg_historico["content"]})
                     
-                    # Envia a mensagem do usuário (podendo conter imagens)
                     mensagens_api.append({"role": "user", "content": conteudo_mensagem})
 
+                    # Mudança do nome do Tool para registrar_treino_realizado_no_banco para clareza semântica
                     tools = [
                         {
                             "type": "function",
                             "function": {
-                                "name": "estruturar_analise_treino",
+                                "name": "registrar_treino_realizado_no_banco",
                                 "description": (
-                                    "Chame esta função EXCLUSIVAMENTE quando o usuário enviar um relato de um NOVO treino realizado hoje "
-                                    "(ou subir arquivos GPX/fotos de um treino novo) para salvar no banco. NÃO chame esta função para perguntas "
-                                    "conversacionais, dúvidas sobre periodização, relatórios de semanas ou histórico."
+                                    "Chame esta função EXCLUSIVAMENTE quando o usuário enviar dados de telemetria ou um relato detalhado de um treino que ele "
+                                    "JÁ REALIZOU E TERMINOU para salvar no banco de dados. NÃO chame esta função para pedidos de novos treinos, dúvidas sobre "
+                                    "periodização, relatórios de semanas ou planejamentos futuros."
                                 ),
                                 "parameters": {
                                     "type": "object",
                                     "properties": {
                                         "tipo_treino": {"type": "string", "enum": ["corrida", "crossfit"]},
-                                        "data": {"type": "string", "description": "Data do treino (YYYY-MM-DD)."},
+                                        "data": {"type": "string", "description": "Data do treino concluído (YYYY-MM-DD)."},
                                         "distancia": {"type": "number"},
                                         "elevacao_acumulada": {"type": "number"},
                                         "pace": {"type": "string"},
@@ -403,9 +403,9 @@ with aba_chat:
                                         "tipo_lpo": {"type": "string"},
                                         "percepcao_esforco": {"type": "integer"},
                                         "alerta_desconforto": {"type": "string"},
-                                        "analise_usuario": {"type": "string", "description": "Relato detalhado fornecido pelo aluno sobre as sensações dele."},
-                                        "analise_ia": {"type": "string", "description": "Diagnóstico biomecânico e fisiológico ultra crítico, focado puramente em apontar falhas de ritmo, volume, cadência ou intensidade de forma dura."},
-                                        "performance_geral": {"type": "string", "description": "Cruzamento comparativo do treino de hoje com os PRs históricos e dados de sono/fadiga mapeados na memória."}
+                                        "analise_usuario": {"type": "string", "description": "Relato detalhado fornecido pelo aluno sobre as sensações dele no treino feito."},
+                                        "analise_ia": {"type": "string", "description": "Diagnóstico biomecânico e fisiológico ultra crítico do treino realizado, apontando falhas de ritmo ou volume de forma dura."},
+                                        "performance_geral": {"type": "string", "description": "Cruzamento comparativo do treino executado com os recordes históricos."}
                                     },
                                     "required": ["tipo_treino", "data", "analise_ia", "performance_geral"]
                                 }
@@ -424,7 +424,7 @@ with aba_chat:
                     
                     if resposta_mensagem.tool_calls:
                         tool_call = resposta_mensagem.tool_calls[0]
-                        if tool_call.function.name == "estruturar_analise_treino":
+                        if tool_call.function.name == "registrar_treino_realizado_no_banco":
                             argumentos = json.loads(tool_call.function.arguments)
                             
                             st.session_state.treino_rascunho = argumentos
@@ -448,7 +448,7 @@ with aba_chat:
 # --- Aba 2: Resumo de Performance Consolidada ---
 with aba_performance:
     st.header("📈 Auditoria de Performance & Fraquezas")
-    st.write("Esta seção analisa todo o seu banco de dados histórico para expor desequilíbrios, falhas de pacing, inconsistências e erros metodológicos.")
+    st.write("Esta seção analisa todo o seu banco de dados histórico para expor desequilíbosos, falhas de pacing, inconsistências e erros metodológicos.")
 
     if st.button("🔍 Rodar Auditoria de Performance da IA", use_container_width=True):
         with st.spinner("Compilando dados do Supabase e processando relatório analítico..."):
