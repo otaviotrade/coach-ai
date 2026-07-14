@@ -23,19 +23,82 @@ nome_modelo = "gpt-4o-mini"
 def processar_imagem_openai(arquivo_imagem):
     return base64.b64encode(arquivo_imagem.getvalue()).decode('utf-8')
 
+# --- Controle de Sessão de Autenticação ---
+if "auth_user" not in st.session_state:
+    st.session_state.auth_user = None
+
+if "plano_periodizacao" not in st.session_state:
+    st.session_state.plano_periodizacao = None
+
+# --- TELA DE LOGIN / CADASTRO ---
+if st.session_state.auth_user is None:
+    st.title("🏋️‍♂️ AI Coach - Login")
+    st.subheader("Acesse sua conta para visualizar seus treinos isolados")
+    
+    tab_login, tab_cadastro = st.tabs(["🔑 Entrar", "📝 Criar Conta"])
+    
+    with tab_login:
+        with st.form("form_login"):
+            email_login = st.text_input("E-mail")
+            senha_login = st.text_input("Senha", type="password")
+            botao_logar = st.form_submit_button("Entrar no Painel")
+            
+            if botao_logar:
+                try:
+                    res = supabase.auth.sign_in_with_password({"email": email_login, "password": senha_login})
+                    if res.user:
+                        st.session_state.auth_user = {"id": res.user.id, "email": res.user.email}
+                        st.success("Acesso autorizado!")
+                        st.rerun()
+                except Exception as erro:
+                    st.error(f"Falha ao entrar: {erro}")
+                    
+    with tab_cadastro:
+        with st.form("form_cadastro"):
+            email_cad = st.text_input("E-mail para Cadastro")
+            senha_cad = st.text_input("Defina sua Senha (min. 6 caracteres)", type="password")
+            botao_cadastrar = st.form_submit_button("Registrar Novo Atleta")
+            
+            if botao_cadastrar:
+                try:
+                    res = supabase.auth.sign_up({"email": email_cad, "password": senha_cad})
+                    if res.user:
+                        st.success("Conta criada com sucesso! Faça o login na aba ao lado.")
+                except Exception as erro:
+                    st.error(f"Falha ao registrar: {erro}")
+    st.stop()
+
+# --- SEÇÃO DO USUÁRIO LOGADO ---
+user_id = st.session_state.auth_user["id"]
+user_email = st.session_state.auth_user["email"]
+
+# Menu de Logout lateral
+with st.sidebar:
+    st.write(f"👤 Logado como:\n**{user_email}**")
+    if st.button("🚪 Sair da Conta", use_container_width=True):
+        try:
+            supabase.auth.sign_out()
+        except Exception:
+            pass
+        st.session_state.auth_user = None
+        st.session_state.mensagens = []
+        st.session_state.treino_rascunho = None
+        st.session_state.plano_periodizacao = None
+        st.rerun()
+
 # --- Estado de Sessão para Controle de Aprovação de Treinos ---
 if "treino_rascunho" not in st.session_state:
     st.session_state.treino_rascunho = None
 
-# --- Sincronização do Histórico Persistente com o Supabase ---
-if "mensagens" not in st.session_state:
+# --- Sincronização do Histórico Persistente com o Supabase (Isolado) ---
+if "mensagens" not in st.session_state or not st.session_state.mensagens:
     try:
-        historico_banco = supabase.table("historico_conversas").select("role", "content").order("id", desc=False).limit(30).execute()
+        historico_banco = supabase.table("historico_conversas").select("role", "content").eq("user_id", user_id).order("id", desc=False).limit(30).execute()
         st.session_state.mensagens = historico_banco.data if historico_banco.data else []
     except Exception:
         st.session_state.mensagens = []
 
-# --- ⚡ Carregamento Otimizado de Artigos Científicos (ANTI-CONGELAMENTO) ---
+# --- Carregamento de Artigos Científicos (Global/Compartilhado) ---
 if "contexto_artigos" not in st.session_state:
     try:
         artigos_banco = supabase.table("artigos_metodologia").select("conteudo_texto").order("id", desc=True).limit(3).execute()
@@ -47,8 +110,9 @@ if "contexto_artigos" not in st.session_state:
     except Exception:
         st.session_state.contexto_artigos = ""
 
+# --- Memória Central do Coach (Isolado) ---
 try:
-    resposta_memoria = supabase.table("memoria_coach").select("diretriz").order("id", desc=True).limit(1).execute()
+    resposta_memoria = supabase.table("memoria_coach").select("diretriz").eq("user_id", user_id).order("id", desc=True).limit(1).execute()
     memoria_central = resposta_memoria.data[0]["diretriz"] if resposta_memoria.data else ""
 except Exception:
     memoria_central = ""
@@ -113,7 +177,8 @@ with aba_chat:
                                 "cadencia_media": rascunho.get("cadencia_media"),
                                 "analise_usuario": rascunho.get("analise_usuario"),
                                 "analise_ia": rascunho.get("analise_ia"),
-                                "performance_geral": rascunho.get("performance_geral")
+                                "performance_geral": rascunho.get("performance_geral"),
+                                "user_id": user_id
                             }
                             supabase.table("treinos_corrida").insert({k: v for k, v in payload.items() if v is not None}).execute()
                         else:
@@ -126,7 +191,8 @@ with aba_chat:
                                 "alerta_desconforto": rascunho.get("alerta_desconforto"),
                                 "analise_usuario": rascunho.get("analise_usuario"),
                                 "analise_ia": rascunho.get("analise_ia"),
-                                "performance_geral": rascunho.get("performance_geral")
+                                "performance_geral": rascunho.get("performance_geral"),
+                                "user_id": user_id
                             }
                             supabase.table("treinos_crossfit").insert({k: v for k, v in payload.items() if v is not None}).execute()
                         
@@ -163,13 +229,12 @@ with aba_chat:
     if botao_enviar and prompt.strip():
         st.session_state.mensagens.append({"role": "user", "content": prompt})
         try:
-            supabase.table("historico_conversas").insert({"role": "user", "content": prompt}).execute()
+            supabase.table("historico_conversas").insert({"role": "user", "content": prompt, "user_id": user_id}).execute()
         except Exception:
             pass
 
         with container_chat:
-            with st.chat_message("user"):
-                st.markdown(prompt)
+            st.chat_message("user").markdown(prompt)
             
             with st.chat_message("assistant"):
                 try:
@@ -254,7 +319,6 @@ with aba_chat:
                                 
                         prompt_enriquecido += dados_acumulados
 
-                    # CORREÇÃO DO BUG: Inicializa conteudo_mensagem antes de testar o if fotos_treino
                     conteudo_mensagem = [{"type": "text", "text": prompt_enriquecido}]
 
                     if fotos_treino:
@@ -265,29 +329,38 @@ with aba_chat:
                                 "image_url": {"url": f"data:image/jpeg;base64,{imagem_base64}"}
                             })
 
-                    contexto_maquina = "\n\n[MEMÓRIA DO SISTEMA - DADOS DE SAÚDE E PERFORMANCE DO BANCO]:\n"
+                    # --- CORREÇÃO DE CONTEXTO: Janela de dados estendida de 3 para 30 ---
+                    contexto_maquina = "\n\n[MEMÓRIA DE TREINAMENTO E PROGRESSÃO (ÚLTIMOS 30 TREINOS)]:\n"
                     try:
-                        corrida_historico = supabase.table("treinos_corrida").select("data", "distancia", "pace", "zonas_fc").order("data", desc=True).limit(3).execute()
-                        cross_historico = supabase.table("treinos_crossfit").select("data", "descricao_wod", "tempo_score", "alerta_desconforto").order("data", desc=True).limit(3).execute()
-                        saude_historico = supabase.table("metricas_diarias").select("data", "vfc", "nivel_dor_muscular", "horas_sono").order("data", desc=True).limit(3).execute()
-                        prs_historico = supabase.table("prs").select("movimento", "carga").execute()
+                        corrida_historico = supabase.table("treinos_corrida").select("data", "distancia", "pace", "zonas_fc").eq("user_id", user_id).order("data", desc=True).limit(30).execute()
+                        cross_historico = supabase.table("treinos_crossfit").select("data", "descricao_wod", "tempo_score", "alerta_desconforto").eq("user_id", user_id).order("data", desc=True).limit(30).execute()
+                        saude_historico = supabase.table("metricas_diarias").select("data", "vfc", "nivel_dor_muscular", "horas_sono").eq("user_id", user_id).order("data", desc=True).limit(10).execute()
+                        prs_historico = supabase.table("prs").select("movimento", "carga").eq("user_id", user_id).execute()
                         
-                        if corrida_historico.data: contexto_maquina += f"- Últimas corridas salvas: {corrida_historico.data}\n"
-                        if cross_historico.data: contexto_maquina += f"- Últimos WODs salvos: {cross_historico.data}\n"
-                        if saude_historico.data: contexto_maquina += f"- Histórico de VFC, sono e dores: {saude_historico.data}\n"
-                        if prs_historico.data: contexto_maquina += f"- Recordes pessoais (PRs) atuais: {prs_historico.data}\n"
+                        if corrida_historico.data: contexto_maquina += f"- Histórico Corridas: {corrida_historico.data}\n"
+                        if cross_historico.data: contexto_maquina += f"- Histórico CrossFit: {cross_historico.data}\n"
+                        if saude_historico.data: contexto_maquina += f"- Histórico Biométrico: {saude_historico.data}\n"
+                        if prs_historico.data: contexto_maquina += f"- Recordes Atuais (PRs): {prs_historico.data}\n"
                     except Exception:
                         pass
 
+                    # --- CORREÇÃO DE MEMÓRIA: Injeta a planilha de periodização ativa na mente do Coach ---
+                    plano_ativo = st.session_state.get("plano_periodizacao")
+                    contexto_periodizacao = f"\n[PLANO DE PERIODIZAÇÃO EXECUTADO PELO ATLETA]:\n{plano_ativo}\n" if plano_ativo else "\n[PLANO DE PERIODIZAÇÃO]: Nenhum planejamento gerado nesta sessão ainda.\n"
+
                     mensagens_api = []
-                    contexto_sistema = f"{memoria_central}\nData atual do sistema: {str(date.today())}.\n{contexto_maquina}\n"
+                    contexto_sistema = f"{memoria_central}\nData atual do sistema: {str(date.today())}.\n{contexto_maquina}\n{contexto_periodizacao}\n"
                     contexto_sistema += (
                         "INSTRUÇÃO DE COMPORTAMENTO CRÍTICO (SEVERO):\n"
                         "Você é um Coach de Elite extremamente técnico, rigoroso e cientificamente inflexível. "
                         "Não massageie o ego do atleta e evite adjetivos de incentivo vazios. "
                         "Sua prioridade total é identificar falhas metodológicas, erros de pacing (ritmo), assimetria mecânica, "
-                        "queda abrupta de cadência, excesso de fadiga acumulada por má qualidade do sono/VFC, e sinais de sobrecarga articular. "
-                        "Gere uma análise crítica dura e aponte o que precisa ser corrigido sem rodeios."
+                        "queda abrupta de cadência, excesso de fadiga acumulada por má qualidade do sono/VFC, e sinais de sobrecarga articular.\n\n"
+                        "💡 SOBRE O CICLO ATUAL:\n"
+                        "O atleta forneceu um histórico estendido de treinos e o plano de periodização científica gerado. "
+                        "Use estes dados, cruze as datas dos treinos com o início do planejamento e calcule com precisão em qual semana "
+                        "do ciclo/mesociclo nós estamos hoje. Se o atleta perguntar sobre a fase do ciclo ou semana, você DEVE analisar o histórico de corridas/WODs "
+                        "para responder com precisão matemática."
                     )
                     
                     mensagens_api.append({"role": "system", "content": contexto_sistema})
@@ -350,7 +423,7 @@ with aba_chat:
                     st.markdown(resposta_ia)
                     st.session_state.mensagens.append({"role": "assistant", "content": resposta_ia})
                     try:
-                        supabase.table("historico_conversas").insert({"role": "assistant", "content": resposta_ia}).execute()
+                        supabase.table("historico_conversas").insert({"role": "assistant", "content": resposta_ia, "user_id": user_id}).execute()
                     except Exception:
                         pass
                     
@@ -368,10 +441,10 @@ with aba_performance:
     if st.button("🔍 Rodar Auditoria de Performance da IA", use_container_width=True):
         with st.spinner("Compilando dados do Supabase e processando relatório analítico..."):
             try:
-                historico_corrida = supabase.table("treinos_corrida").select("*").order("data", desc=True).limit(10).execute().data
-                historico_cross = supabase.table("treinos_crossfit").select("*").order("data", desc=True).limit(10).execute().data
-                historico_saude = supabase.table("metricas_diarias").select("*").order("data", desc=True).limit(10).execute().data
-                historico_prs = supabase.table("prs").select("*").execute().data
+                historico_corrida = supabase.table("treinos_corrida").select("*").eq("user_id", user_id).order("data", desc=True).limit(10).execute().data
+                historico_cross = supabase.table("treinos_crossfit").select("*").eq("user_id", user_id).order("data", desc=True).limit(10).execute().data
+                historico_saude = supabase.table("metricas_diarias").select("*").eq("user_id", user_id).order("data", desc=True).limit(10).execute().data
+                historico_prs = supabase.table("prs").select("*").eq("user_id", user_id).execute().data
                 
                 compilado_banco = {
                     "corridas": historico_corrida,
@@ -421,7 +494,7 @@ with aba_periodizacao:
     if st.button("🔄 Gerar/Atualizar Plano de Periodização Baseado na Memória Científica", use_container_width=True):
         with st.spinner("Analisando base teórica e gerando sua periodização sob medida..."):
             try:
-                historico_prs = supabase.table("prs").select("*").execute().data
+                historico_prs = supabase.table("prs").select("*").eq("user_id", user_id).execute().data
                 artigos = st.session_state.contexto_artigos if st.session_state.contexto_artigos else "Nenhum artigo científico anexado ainda."
                 
                 mensagens_periodizacao = [
@@ -469,14 +542,15 @@ with aba_pr:
         botao_salvar = st.form_submit_button("Salvar PR no Banco")
         
         if botao_salvar:
-            if not movimiento.strip():
+            if not movimento.strip():
                 st.error("Por favor, digite o nome do movimento antes de salvar.")
             else:
                 dados_pr = {
                     "data_recorde": str(data_recorde),
                     "movimento": movimento.strip(),
                     "carga": carga,
-                    "peso_corporal": peso_corporal
+                    "peso_corporal": peso_corporal,
+                    "user_id": user_id
                 }
                 try:
                     resposta = supabase.table("prs").insert(dados_pr).execute()
@@ -485,10 +559,10 @@ with aba_pr:
                 except Exception as e:
                     st.error(f"Erro ao salvar no banco: {e}")
 
-# --- Aba 5: Base de Conhecimento (SISTEMA DE MEMÓRIA ANTI-CRASH OOM) ---
+# --- Aba 5: Base de Conhecimento (Global/Replicado para todos) ---
 with aba_docs:
     st.header("Diretório de Artigos")
-    st.warning("⚠️ IMPORTANTE: Para arquivos grandes (acima de 20MB), suba UM por vez para evitar o travamento da RAM gratuita do Streamlit.")
+    st.warning("⚠️ Base de conhecimento compartilhada globalmente entre todos os atletas do sistema.")
     
     arquivos_pdf = st.file_uploader("📚 Enviar Artigos (PDFs)", type=["pdf"], accept_multiple_files=True, key="doc_upload_pdf")
     
@@ -507,23 +581,23 @@ with aba_docs:
                             "conteudo_texto": texto_extraido
                         }
                         
+                        # Salva sem user_id para manter a tabela global
                         supabase.table("artigos_metodologia").insert(dados_artigo).execute()
                         
                         st.session_state.contexto_artigos = f"{texto_extraido}\n\n{st.session_state.contexto_artigos}"[:80000]
                         st.success(f"✅ Documento '{arquivo.name}' processado e gravado com sucesso!")
                         
-                        # LIMPEZA SEVERA DE MEMÓRIA RAM:
                         del leitor
                         del texto_extraido
                         del dados_artigo
-                        gc.collect()  # Aciona a coleta de lixo ativa do sistema
+                        gc.collect()
                         
                     except Exception as e:
                         st.error(f"Erro ao processar '{arquivo.name}': {e}")
         else:
             st.warning("Por favor, selecione pelo menos um arquivo PDF antes de clicar em enviar.")
 
-# --- Aba 6: Cérebro do Coach ---
+# --- Aba 6: Cérebro do Coach (Isolado) ---
 with aba_cerebro:
     st.header("Memória Central")
     with st.form("form_cerebro"):
@@ -531,7 +605,7 @@ with aba_cerebro:
         botao_salvar_memoria = st.form_submit_button("Atualizar Cérebro")
         if botao_salvar_memoria:
             try:
-                supabase.table("memoria_coach").insert({"diretriz": nova_diretriz}).execute()
+                supabase.table("memoria_coach").insert({"diretriz": nova_diretriz, "user_id": user_id}).execute()
                 st.success("Cérebro atualizado com sucesso!")
                 st.rerun()
             except Exception as e:
