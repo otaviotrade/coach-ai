@@ -54,8 +54,10 @@ except Exception:
 
 st.title("🏋️‍♂️ AI Coach de Treinos")
 
-aba_chat, aba_pr, aba_docs, aba_cerebro = st.tabs([
+# Definição das cinco abas do painel principal (Adicionado Resumo de Performance)
+aba_chat, aba_performance, aba_pr, aba_docs, aba_cerebro = st.tabs([
     "💬 Coach Chat", 
+    "📈 Resumo de Performance",
     "🏆 Meus PRs", 
     "📚 Base de Conhecimento",
     "🧠 Cérebro do Coach"
@@ -153,9 +155,12 @@ with aba_chat:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-    prompt = st.chat_input("Fale com seu Coach...")
+    # Modificado: Uso de Formulário com text_area para desabilitar o envio acidental ao apertar "Enter"
+    with st.form("form_chat", clear_on_submit=True):
+        prompt = st.text_area("Fale com seu Coach...", placeholder="Relate as sensações do treino, dores ou envie fotos/gpx usando a área de anexo acima...", height=120)
+        botao_enviar = st.form_submit_button("📤 Enviar para Análise do Coach")
     
-    if prompt:
+    if botao_enviar and prompt.strip():
         st.session_state.mensagens.append({"role": "user", "content": prompt})
         try:
             supabase.table("historico_conversas").insert({"role": "user", "content": prompt}).execute()
@@ -172,7 +177,7 @@ with aba_chat:
                     if st.session_state.contexto_artigos != "":
                         prompt_enriquecido = f"Base teórica de artigos científicos para periodização:\n{st.session_state.contexto_artigos}\n\nInstrução do aluno: {prompt_enriquecido}"
 
-                    # ETAPA 1 e 3: Processamento e leitura de dados de arquivos GPX
+                    # Processamento de arquivos GPX
                     if arquivos_gpx:
                         dados_acumulados = "\n\n[DADOS BRUTOS EXTRAÍDOS DE TODOS OS ARQUIVOS GPX SUBIDOS]:\n"
                         for arquivo in arquivos_gpx:
@@ -252,14 +257,14 @@ with aba_chat:
 
                     conteudo_mensagem = [{"type": "text", "text": prompt_enriquecido}]
                     if fotos_treino:
-                        for foto in fotos_treino:
-                            imagem_base64 = processar_imagem_openai(foto)
+                        for photo in fotos_treino:
+                            imagem_base64 = processar_imagem_openai(photo)
                             conteudo_mensagem.append({
                                 "type": "image_url",
                                 "image_url": {"url": f"data:image/jpeg;base64,{imagem_base64}"}
                             })
 
-                    # ETAPA 2: O Sistema consulta as outras tabelas para carregar o histórico de contexto do aluno
+                    # O Sistema consulta as outras tabelas para carregar o histórico de contexto do aluno
                     contexto_maquina = "\n\n[MEMÓRIA DO SISTEMA - DADOS DE SAÚDE E PERFORMANCE DO BANCO]:\n"
                     try:
                         corrida_historico = supabase.table("treinos_corrida").select("data", "distancia", "pace", "zonas_fc").order("data", desc=True).limit(3).execute()
@@ -275,8 +280,16 @@ with aba_chat:
                         pass
 
                     mensagens_api = []
+                    # Diretriz de Rigor: IA instruída a focar exclusivamente em falhas e pontos cegos de evolução
                     contexto_sistema = f"{memoria_central}\nData atual do sistema: {str(date.today())}.\n{contexto_maquina}\n"
-                    contexto_sistema += "IMPORTANTE (ETAPA 4): Com base nos dados crus informados hoje e no histórico de saúde/treinos do banco carregados acima, gere uma análise crítica minuciosa do treino de hoje (pace, mecânica, esforço) e um resumo evolutivo de sua performance geral."
+                    contexto_sistema += (
+                        "INSTRUÇÃO DE COMPORTAMENTO CRÍTICO (SEVERO):\n"
+                        "Você é um Coach de Elite extremamente técnico, rigoroso e cientificamente inflexível. "
+                        "Não massageie o ego do atleta e evite adjetivos de incentivo vazios. "
+                        "Sua prioridade total é identificar falhas metodológicas, erros de pacing (ritmo), assimetria mecânica, "
+                        "queda abrupta de cadência, excesso de fadiga acumulada por má qualidade do sono/VFC, e sinais de sobrecarga articular. "
+                        "Gere uma análise crítica dura e aponte o que precisa ser corrigido sem rodeios."
+                    )
                     
                     mensagens_api.append({"role": "system", "content": contexto_sistema})
                     
@@ -290,7 +303,7 @@ with aba_chat:
                             "type": "function",
                             "function": {
                                 "name": "estruturar_analise_treino",
-                                "description": "Chame esta função obrigatoriamente quando o usuário enviar dados de treino (texto, fotos ou gpx) para processar o diagnóstico.",
+                                "description": "Chame esta função obrigatoriamente quando o usuário enviar dados de treino para estruturar o diagnóstico para aprovação.",
                                 "parameters": {
                                     "type": "object",
                                     "properties": {
@@ -305,10 +318,10 @@ with aba_chat:
                                         "tempo_score": {"type": "string"},
                                         "tipo_lpo": {"type": "string"},
                                         "percepcao_esforco": {"type": "integer"},
-                                        "alerta_desconforto": {"type": "string", "description": "Dores musculares, lesões ou incômodos citados ou detectados."},
-                                        "analise_usuario": {"type": "string", "description": "Resumo do feedback ou relato direto fornecido pelo aluno sobre as sensações dele."},
-                                        "analise_ia": {"type": "string", "description": "Análise crítica detalhada elaborada por você (IA) avaliando métricas cruas, volume e intensidade."},
-                                        "performance_geral": {"type": "string", "description": "Avaliação comparativa correlacionando o treino de hoje com o histórico de saúde, PRs e treinos passados obtidos na memória."}
+                                        "alerta_desconforto": {"type": "string"},
+                                        "analise_usuario": {"type": "string", "description": "Relato detalhado fornecido pelo aluno sobre as sensações dele."},
+                                        "analise_ia": {"type": "string", "description": "Diagnóstico biomecânico e fisiológico ultra crítico, focado puramente em apontar falhas de ritmo, volume, cadência ou intensidade de forma dura."},
+                                        "performance_geral": {"type": "string", "description": "Cruzamento comparativo do treino de hoje com os PRs históricos e dados de sono/fadiga mapeados na memória."}
                                     },
                                     "required": ["tipo_treino", "data", "analise_ia", "performance_geral"]
                                 }
@@ -330,7 +343,6 @@ with aba_chat:
                         if tool_call.function.name == "estruturar_analise_treino":
                             argumentos = json.loads(tool_call.function.arguments)
                             
-                            # Guarda em cache para a Etapa 4 e 5 de aprovação do usuário
                             st.session_state.treino_rascunho = argumentos
                             resposta_ia = f"📖 **Análise Concluída com Sucesso!** Montei um diagnóstico cruzando sua telemetria com seu histórico de saúde do banco. Por favor, revise o painel de aprovação acima para confirmar a gravação no Supabase."
                     else:
@@ -349,7 +361,61 @@ with aba_chat:
                 except Exception as e:
                     st.error(f"Erro ao processar: {e}")
 
-# --- Aba 2: Recordes Pessoais ---
+# --- Aba 2: Resumo de Performance Consolidada (NOVA PÁGINA) ---
+with aba_performance:
+    st.header("📈 Auditoria de Performance & Fraquezas")
+    st.write("Esta seção analisa todo o seu banco de dados histórico para expor desequilíbrios, falhas de pacing, inconsistências e erros metodológicos.")
+
+    if st.button("🔍 Rodar Auditoria de Performance da IA", use_container_width=True):
+        with st.spinner("Compilando dados do Supabase e processando relatório analítico..."):
+            try:
+                # Carregamento massivo das tabelas
+                historico_corrida = supabase.table("treinos_corrida").select("*").order("data", desc=True).limit(10).execute().data
+                historico_cross = supabase.table("treinos_crossfit").select("*").order("data", desc=True).limit(10).execute().data
+                historico_saude = supabase.table("metricas_diarias").select("*").order("data", desc=True).limit(10).execute().data
+                historico_prs = supabase.table("prs").select("*").execute().data
+                
+                compilado_banco = {
+                    "corridas": historico_corrida,
+                    "crossfit": historico_cross,
+                    "saude_sono_vfc": historico_saude,
+                    "prs": historico_prs
+                }
+                
+                mensagens_auditoria = [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Você é um auditor de performance esportiva implacável, focado em triatlo, corrida e CrossFit/LPO. "
+                            "Seu objetivo é analisar as últimas entradas e expor as fraquezas latentes do atleta. "
+                            "Exponha erros de pacing (ex: flutuações severas de ritmo), cadência inadequada, perda de força nos PRs, "
+                            "correlação entre treinos ruins e sono deficiente/baixa VFC, ou excesso de dores relatadas. "
+                            "Organize em tópicos objetivos: 1. Falhas Críticas Identificadas, 2. Gargalos de Recuperação Fisiológica, "
+                            "3. Ajustes Metodológicos Imediatos. Seja assertivo, duro e ultra analítico."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Dados brutos consolidados do banco do atleta para auditoria:\n{json.dumps(compilado_banco, default=str)}"
+                    }
+                ]
+                
+                resposta_openai = cliente_openai.chat.completions.create(
+                    model=nome_modelo,
+                    messages=mensagens_auditoria
+                )
+                
+                st.session_state.auditoria_performance = resposta_openai.choices[0].message.content
+            except Exception as e_audit:
+                st.error(f"Erro ao extrair dados para auditoria: {e_audit}")
+                
+    if "auditoria_performance" in st.session_state:
+        st.markdown("---")
+        st.markdown(st.session_state.auditoria_performance)
+    else:
+        st.info("💡 Clique no botão acima para compilar seu histórico e gerar a auditoria analítica severa da IA.")
+
+# --- Aba 3: Recordes Pessoais ---
 with aba_pr:
     st.header("Recordes Pessoais")
     with st.form("form_pr", clear_on_submit=True):
@@ -374,7 +440,7 @@ with aba_pr:
             except Exception as e:
                 st.error(f"Erro ao salvar no banco: {e}")
 
-# --- Aba 3: Base de Conhecimento ---
+# --- Aba 4: Base de Conhecimento ---
 with aba_docs:
     st.header("Diretório de Artigos")
     st.write("Suba PDFs com metodologias de treino.")
@@ -397,7 +463,7 @@ with aba_docs:
         except Exception as e:
             st.error(f"Erro ao ler e persistir o PDF: {e}")
 
-# --- Aba 4: Cérebro do Coach ---
+# --- Aba 5: Cérebro do Coach ---
 with aba_cerebro:
     st.header("Memória Central")
     with st.form("form_cerebro"):
