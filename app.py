@@ -329,7 +329,7 @@ with aba_chat:
                                 "image_url": {"url": f"data:image/jpeg;base64,{imagem_base64}"}
                             })
 
-                    # --- CORREÇÃO DE CONTEXTO: Janela de dados de treinos ---
+                    # --- CONTEXTO DE HISTÓRICO DE DADOS ---
                     contexto_maquina = "\n\n[MEMÓRIA DE TREINAMENTO E PROGRESSÃO (ÚLTIMOS 30 TREINOS)]:\n"
                     try:
                         corrida_historico = supabase.table("treinos_corrida").select("data", "distancia", "pace", "zonas_fc").eq("user_id", user_id).order("data", desc=True).limit(30).execute()
@@ -338,13 +338,13 @@ with aba_chat:
                         prs_historico = supabase.table("prs").select("movimento", "carga").eq("user_id", user_id).execute()
                         
                         if corrida_historico.data: contexto_maquina += f"- Histórico Corridas: {corrida_historico.data}\n"
-                        if cross_historico.data: contexto_maquina += f"- Histórico CrossFit: {cross_historico.data}\n"
+                        if cross_historico.data: contexto_maquina += f"- Histórico CrossFit (Para avaliação de estresse/fadiga): {cross_historico.data}\n"
                         if saude_historico.data: contexto_maquina += f"- Histórico Biométrico: {saude_historico.data}\n"
-                        if prs_historico.data: contexto_maquina += f"- Recordes Atuais (PRs): {prs_historico.data}\n"
+                        if prs_historico.data: contexto_maquina += f"- Recordes Atuais (PRs) de LPO: {prs_historico.data}\n"
                     except Exception:
                         pass
 
-                    # --- CORREÇÃO DE MEMÓRIA: Periodização ativa ---
+                    # --- CONTEXTO DE PERIODIZAÇÃO ---
                     plano_ativo = st.session_state.get("plano_periodizacao")
                     contexto_periodizacao = f"\n[PLANO DE PERIODIZAÇÃO EXECUTADO PELO ATLETA]:\n{plano_ativo}\n" if plano_ativo else "\n[PLANO DE PERIODIZAÇÃO]: Nenhum planejamento gerado nesta sessão ainda.\n"
 
@@ -353,27 +353,31 @@ with aba_chat:
                     contexto_sistema += (
                         "INSTRUÇÃO DE COMPORTAMENTO CRÍTICO (SEVERO):\n"
                         "Você é um Coach de Elite extremamente técnico, rigoroso e cientificamente inflexível. "
-                        "Não massageie o ego do atleta e evite adjetivos de incentivo vazios. "
                         "Sua prioridade total é identificar falhas metodológicas, erros de pacing (ritmo), assimetria mecânica, "
                         "queda abrupta de cadência, excesso de fadiga acumulada por má qualidade do sono/VFC, e sinais de sobrecarga articular.\n\n"
+                        "🚫 REGRA ABSOLUTA DE PRESCRIÇÃO E CRIAÇÃO (RESTRIÇÃO DE CROSSFIT):\n"
+                        "Você NUNCA deve prescrever, planejar, propor ou criar novos treinos de CrossFit, musculação ou LPO. "
+                        "Sua capacidade de criação, estruturação de ciclos, planilhas e prescrição de novos treinos é ESTREITAMENTE LIMITADA À CORRIDA.\n"
+                        "Os treinos de CrossFit do histórico servem EXCLUSIVAMENTE para que você possa avaliar o estresse mecânico, "
+                        "metabólico, fadiga do sistema nervoso central (SNC) e desgaste muscular. "
+                        "Se o usuário pedir para você criar um treino de CrossFit ou LPO, recuse educadamente, explicando que seu escopo "
+                        "científico de criação é 100% focado em Corrida, e que o CrossFit é usado apenas para monitorar o seu estresse e recuperação.\n\n"
                         "💡 SOBRE O CICLO ATUAL:\n"
-                        "O atleta forneceu um histórico estendido de treinos e o plano de periodização científica gerado. "
-                        "Use estes dados, cruze as datas dos treinos com o início do planejamento e calcule com precisão em qual semana "
-                        "do ciclo/mesociclo nós estamos hoje. Se o atleta perguntar sobre a fase do ciclo ou semana, você DEVE analisar o histórico de corridas/WODs "
-                        "para responder com precisão matemática.\n\n"
-                        "⚠️ REQUISITO DE SEGURANÇA CRÍTICO:\n"
+                        "Analise o histórico e a periodização para calcular as fases e semanas de corrida, ajustando o volume de corrida de acordo com o desgaste acumulado no CrossFit."
+                        "\n\n⚠️ REQUISITO DE SEGURANÇA CRÍTICO:\n"
                         "Se o usuário estiver apenas fazendo perguntas, tirando dúvidas, batendo papo ou perguntando sobre sua planilha de periodização/semanas, "
-                        "responda diretamente em texto puro. NUNCA, SOB HIPÓTESE ALGUMA, chame a ferramenta 'estruturar_analise_treino' para conversas comuns!"
+                        "responda diretamente em texto puro. NUNCA chame a ferramenta 'estruturar_analise_treino' para conversas comuns!"
                     )
                     
+                    # Garantir que a diretriz global de brevidade/simplicidade de escrita do usuário seja cumprida
                     mensagens_api.append({"role": "system", "content": contexto_sistema})
                     
                     for msg_historico in st.session_state.mensagens[:-1]:
                         mensagens_api.append({"role": msg_historico["role"], "content": msg_historico["content"]})
                     
+                    # Envia a mensagem do usuário (podendo conter imagens)
                     mensagens_api.append({"role": "user", "content": conteudo_mensagem})
 
-                    # Trava estrita na descrição da ferramenta para evitar chamadas falsas
                     tools = [
                         {
                             "type": "function",
@@ -510,11 +514,13 @@ with aba_periodizacao:
                         "role": "system",
                         "content": (
                             "Você é um Head Coach de elite especializado em planejar planilhas de periodização esportiva baseadas estritamente em evidências científicas. "
-                            "Sua missão é gerar um plano de periodização analítico, detalhado e implacável para os próximos ciclos de treino (focado em corrida, LPO e CrossFit). "
+                            "Sua missão é gerar um plano de periodização analítico, detalhado e implacável focado EXCLUSIVAMENTE em treinos de CORRIDA. "
+                            "Você NUNCA deve prescrever, planejar ou detalhar novos treinos de CrossFit ou LPO no planejamento. "
+                            "Use o histórico de CrossFit e recordes (PRs) de LPO do atleta apenas como métricas de desgaste "
+                            "e força muscular de base para ajustar o volume, a intensidade e os descansos (deload) da planilha de CORRIDA. "
                             "Você deve usar as teorias e metodologias descritas nos artigos científicos fornecidos pelo usuário no contexto. "
-                            "Seja extremamente técnico e detalhado: defina a estrutura dos próximos mesociclos e microciclos, distribuição de intensidade (Zonas de FC, Pacing), "
-                            "estratégias de progressão de carga (RPE e % de 1RM baseando-se nos PRs reais dele) e protocolos rigorosos de recuperação ativa/deload. "
-                            "Adote o tom severo e focado em performance absoluta, sem rodeios ou palavras vazias de incentivo."
+                            "Seja extremamente técnico e detalhado: defina a estrutura dos próximos mesociclos e microciclos de CORRIDA, "
+                            "distribuição de intensidade (Zonas de FC, Pacing) e protocolos de recuperação ativa."
                         )
                     },
                     {
@@ -614,7 +620,7 @@ with aba_cerebro:
         if botao_salvar_memoria:
             try:
                 supabase.table("memoria_coach").insert({"diretriz": nova_diretriz, "user_id": user_id}).execute()
-                st.success("Cérebro updated com sucesso!")
+                st.success("Cérebro atualizado com sucesso!")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao salvar: {e}")
