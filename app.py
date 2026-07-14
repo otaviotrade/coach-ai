@@ -7,6 +7,7 @@ import gpxpy
 from datetime import date
 import json
 import xml.etree.ElementTree as ET
+import gc  # Gerenciador de memória RAM para evitar crash de OOM
 
 # Configura a página para modo amplo
 st.set_page_config(page_title="Coach IA", layout="wide", initial_sidebar_state="collapsed")
@@ -481,10 +482,10 @@ with aba_pr:
                 except Exception as e:
                     st.error(f"Erro ao salvar no banco: {e}")
 
-# --- Aba 5: Base de Conhecimento ---
+# --- Aba 5: Base de Conhecimento (SISTEMA DE MEMÓRIA ANTI-CRASH OOM) ---
 with aba_docs:
     st.header("Diretório de Artigos")
-    st.write("Suba vários PDFs com metodologias de treino de uma vez.")
+    st.warning("⚠️ IMPORTANTE: Para arquivos grandes (acima de 20MB), suba UM por vez para evitar o travamento da RAM gratuita do Streamlit.")
     
     arquivos_pdf = st.file_uploader("📚 Enviar Artigos (PDFs)", type=["pdf"], accept_multiple_files=True, key="doc_upload_pdf")
     
@@ -507,6 +508,13 @@ with aba_docs:
                         
                         st.session_state.contexto_artigos = f"{texto_extraido}\n\n{st.session_state.contexto_artigos}"[:80000]
                         st.success(f"✅ Documento '{arquivo.name}' processado e gravado com sucesso!")
+                        
+                        # LIMPEZA SEVERA DE MEMÓRIA RAM:
+                        del leitor
+                        del texto_extraido
+                        del dados_artigo
+                        gc.collect()  # Aciona a coleta de lixo ativa do sistema
+                        
                     except Exception as e:
                         st.error(f"Erro ao processar '{arquivo.name}': {e}")
         else:
