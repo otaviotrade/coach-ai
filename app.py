@@ -22,22 +22,24 @@ nome_modelo = "gpt-4o-mini"
 def processar_imagem_openai(arquivo_imagem):
     return base64.b64encode(arquivo_imagem.getvalue()).decode('utf-8')
 
+# --- Estado de Sessão para Controle de Aprovação de Treinos ---
+if "treino_rascunho" not in st.session_state:
+    st.session_state.treino_rascunho = None
+
 # --- Sincronização do Histórico Persistente com o Supabase ---
 if "mensagens" not in st.session_state:
     try:
-        # Reduzido o limite para as últimas 30 mensagens para economizar tokens de contexto
         historico_banco = supabase.table("historico_conversas").select("role", "content").order("id", desc=False).limit(30).execute()
         st.session_state.mensagens = historico_banco.data if historico_banco.data else []
     except Exception:
         st.session_state.mensagens = []
 
-# --- 📚 Carregamento com Blindagem contra estouro de TPM ---
+# --- Carregamento Limpo de Artigos Científicos ---
 if "contexto_artigos" not in st.session_state:
     try:
         artigos_banco = supabase.table("artigos_metodologia").select("conteudo_texto").order("id", desc=True).execute()
         if artigos_banco.data:
             texto_unificado = "\n\n".join([art["conteudo_texto"] for art in artigos_banco.data])
-            # BLINDAGEM: Corta o texto em 80k caracteres (~18k tokens) para impedir o erro 429 de Rate Limit
             st.session_state.contexto_artigos = texto_unificado[:80000]
         else:
             st.session_state.contexto_artigos = ""
@@ -61,6 +63,80 @@ aba_chat, aba_pr, aba_docs, aba_cerebro = st.tabs([
 
 # --- Aba 1: Coach Chat ---
 with aba_chat:
+    # Interface para revisão e aprovação dos dados estruturados pela IA
+    if st.session_state.treino_rascunho:
+        rascunho = st.session_state.treino_rascunho
+        tipo_formatado = "🏃‍♂️ CORRIDA" if rascunho.get("tipo_treino") == "corrida" else "🏋️‍♂️ CROSSFIT"
+        
+        with st.container(border=True):
+            st.warning(f"📋 **Diagnóstico de Treino Gerado ({tipo_formatado}) - Aguardando sua Aprovação para Salvar:**")
+            
+            c_meta1, c_meta2, c_meta3 = st.columns(3)
+            with c_meta1:
+                st.write(f"**📅 Data:** {rascunho.get('data')}")
+                if rascunho.get("tipo_treino") == "corrida":
+                    st.write(f"**📏 Distância:** {rascunho.get('distancia')} km")
+                    st.write(f"**⏱️ Pace Médio:** {rascunho.get('pace')}")
+                else:
+                    st.write(f"**📝 WOD:** {rascunho.get('descricao_wod')}")
+                    st.write(f"**⏱️ Score/Tempo:** {rascunho.get('tempo_score')}")
+            with c_meta2:
+                if rascunho.get("tipo_treino") == "corrida":
+                    st.write(f"**❤️ Frequência:** {rascunho.get('zonas_fc')}")
+                    st.write(f"**🔄 Cadência:** {rascunho.get('cadencia_media')} ppm")
+                    st.write(f"**⛰️ Elevação:** {rascunho.get('elevacao_acumulada')} m")
+                else:
+                    st.write(f"**🏋️ LPO Executado:** {rascunho.get('tipo_lpo')}")
+                    st.write(f"**🔥 Percepção de Esforço (RPE):** {rascunho.get('percepcao_esforco')}/10")
+            with c_meta3:
+                st.write(f"**⚠️ Relato de Desconforto:** {rascunho.get('alerta_desconforto', 'Nenhum')}")
+
+            st.markdown(f"---")
+            st.markdown(f"**💬 Seu Feedback (Análise do Usuário):**\n*{rascunho.get('analise_usuario', 'Não informado')}*")
+            st.markdown(f"**🧠 Análise Crítica do Coach (IA):**\n{rascunho.get('analise_ia')}")
+            st.markdown(f"**📈 Relatório de Performance Geral (Histórico + Atual):**\n{rascunho.get('performance_geral')}")
+            
+            c_btn1, c_btn2 = st.columns(2)
+            with c_btn1:
+                if st.button("✅ Aprovar e Gravar no Supabase", use_container_width=True, key="btn_confirmar_banco"):
+                    try:
+                        if rascunho.get("tipo_treino") == "corrida":
+                            payload = {
+                                "data": rascunho.get("data"),
+                                "distancia": rascunho.get("distancia"),
+                                "elevacao_acumulada": rascunho.get("elevacao_acumulada"),
+                                "pace": rascunho.get("pace"),
+                                "zonas_fc": rascunho.get("zonas_fc"),
+                                "cadencia_media": rascunho.get("cadencia_media"),
+                                "analise_usuario": rascunho.get("analise_usuario"),
+                                "analise_ia": rascunho.get("analise_ia"),
+                                "performance_geral": rascunho.get("performance_geral")
+                            }
+                            supabase.table("treinos_corrida").insert({k: v for k, v in payload.items() if v is not None}).execute()
+                        else:
+                            payload = {
+                                "data": rascunho.get("data"),
+                                "descricao_wod": rascunho.get("descricao_wod"),
+                                "tempo_score": rascunho.get("tempo_score"),
+                                "tipo_lpo": rascunho.get("tipo_lpo"),
+                                "percepcao_esforco": rascunho.get("percepcao_esforco"),
+                                "alerta_desconforto": rascunho.get("alerta_desconforto"),
+                                "analise_usuario": rascunho.get("analise_usuario"),
+                                "analise_ia": rascunho.get("analise_ia"),
+                                "performance_geral": rascunho.get("performance_geral")
+                            }
+                            supabase.table("treinos_crossfit").insert({k: v for k, v in payload.items() if v is not None}).execute()
+                        
+                        st.success("🎉 Dados de telemetria e análises críticas salvos com sucesso no Supabase!")
+                        st.session_state.treino_rascunho = None
+                        st.rerun()
+                    except Exception as erro_banco:
+                        st.error(f"Falha ao persistir dados: {erro_banco}")
+            with c_btn2:
+                if st.button("❌ Descartar e Ajustar Informações", use_container_width=True, key="btn_limpar_rascunho"):
+                    st.session_state.treino_rascunho = None
+                    st.rerun()
+
     with st.expander("📎 Anexar Mídias ao Chat (Fotos ou Arquivos GPX)", expanded=False):
         c1, c2 = st.columns(2)
         with c1:
@@ -96,7 +172,7 @@ with aba_chat:
                     if st.session_state.contexto_artigos != "":
                         prompt_enriquecido = f"Base teórica de artigos científicos para periodização:\n{st.session_state.contexto_artigos}\n\nInstrução do aluno: {prompt_enriquecido}"
 
-                    # Motor 1: Processamento de Múltiplos Arquivos GPX
+                    # ETAPA 1 e 3: Processamento e leitura de dados de arquivos GPX
                     if arquivos_gpx:
                         dados_acumulados = "\n\n[DADOS BRUTOS EXTRAÍDOS DE TODOS OS ARQUIVOS GPX SUBIDOS]:\n"
                         for arquivo in arquivos_gpx:
@@ -183,8 +259,25 @@ with aba_chat:
                                 "image_url": {"url": f"data:image/jpeg;base64,{imagem_base64}"}
                             })
 
+                    # ETAPA 2: O Sistema consulta as outras tabelas para carregar o histórico de contexto do aluno
+                    contexto_maquina = "\n\n[MEMÓRIA DO SISTEMA - DADOS DE SAÚDE E PERFORMANCE DO BANCO]:\n"
+                    try:
+                        corrida_historico = supabase.table("treinos_corrida").select("data", "distancia", "pace", "zonas_fc").order("data", desc=True).limit(3).execute()
+                        cross_historico = supabase.table("treinos_crossfit").select("data", "descricao_wod", "tempo_score", "alerta_desconforto").order("data", desc=True).limit(3).execute()
+                        saude_historico = supabase.table("metricas_diarias").select("data", "vfc", "nivel_dor_muscular", "horas_sono").order("data", desc=True).limit(3).execute()
+                        prs_historico = supabase.table("prs").select("movimento", "carga").execute()
+                        
+                        if corrida_historico.data: contexto_maquina += f"- Últimas corridas salvas: {corrida_historico.data}\n"
+                        if cross_historico.data: contexto_maquina += f"- Últimos WODs salvos: {cross_historico.data}\n"
+                        if saude_historico.data: contexto_maquina += f"- Histórico de VFC, sono e dores: {saude_historico.data}\n"
+                        if prs_historico.data: contexto_maquina += f"- Recordes pessoais (PRs) atuais: {prs_historico.data}\n"
+                    except Exception:
+                        pass
+
                     mensagens_api = []
-                    contexto_sistema = f"{memoria_central}\nData atual do sistema: {str(date.today())}.\nIMPORTANTE: Revise o histórico anterior com atenção para identificar lesões, dores musculares antigas, feedbacks e evolução do aluno."
+                    contexto_sistema = f"{memoria_central}\nData atual do sistema: {str(date.today())}.\n{contexto_maquina}\n"
+                    contexto_sistema += "IMPORTANTE (ETAPA 4): Com base nos dados crus informados hoje e no histórico de saúde/treinos do banco carregados acima, gere uma análise crítica minuciosa do treino de hoje (pace, mecânica, esforço) e um resumo evolutivo de sua performance geral."
+                    
                     mensagens_api.append({"role": "system", "content": contexto_sistema})
                     
                     for msg_historico in st.session_state.mensagens[:-1]:
@@ -196,13 +289,13 @@ with aba_chat:
                         {
                             "type": "function",
                             "function": {
-                                "name": "salvar_treino_automatico",
-                                "description": "Chame esta função para cada treino individual que identificar na análise de textos, fotos ou blocos de dados GPX.",
+                                "name": "estruturar_analise_treino",
+                                "description": "Chame esta função obrigatoriamente quando o usuário enviar dados de treino (texto, fotos ou gpx) para processar o diagnóstico.",
                                 "parameters": {
                                     "type": "object",
                                     "properties": {
                                         "tipo_treino": {"type": "string", "enum": ["corrida", "crossfit"]},
-                                        "data": {"type": "string", "description": "Data no formato YYYY-MM-DD."},
+                                        "data": {"type": "string", "description": "Data do treino (YYYY-MM-DD)."},
                                         "distancia": {"type": "number"},
                                         "elevacao_acumulada": {"type": "number"},
                                         "pace": {"type": "string"},
@@ -212,9 +305,12 @@ with aba_chat:
                                         "tempo_score": {"type": "string"},
                                         "tipo_lpo": {"type": "string"},
                                         "percepcao_esforco": {"type": "integer"},
-                                        "alerta_desconforto": {"type": "string"}
+                                        "alerta_desconforto": {"type": "string", "description": "Dores musculares, lesões ou incômodos citados ou detectados."},
+                                        "analise_usuario": {"type": "string", "description": "Resumo do feedback ou relato direto fornecido pelo aluno sobre as sensações dele."},
+                                        "analise_ia": {"type": "string", "description": "Análise crítica detalhada elaborada por você (IA) avaliando métricas cruas, volume e intensidade."},
+                                        "performance_geral": {"type": "string", "description": "Avaliação comparativa correlacionando o treino de hoje com o histórico de saúde, PRs e treinos passados obtidos na memória."}
                                     },
-                                    "required": ["tipo_treino", "data"]
+                                    "required": ["tipo_treino", "data", "analise_ia", "performance_geral"]
                                 }
                             }
                         }
@@ -230,52 +326,13 @@ with aba_chat:
                     resposta_mensagem = resposta_openai.choices[0].message
                     
                     if resposta_mensagem.tool_calls:
-                        mensagens_api.append(resposta_mensagem)
-                        
-                        for tool_call in resposta_mensagem.tool_calls:
-                            if tool_call.function.name == "salvar_treino_automatico":
-                                argumentos = json.loads(tool_call.function.arguments)
-                                tipo = argumentos.get("tipo_treino")
-                                data_registro = argumentos.get("data", str(date.today()))
-                                
-                                if tipo == "corrida":
-                                    dados_inserir = {
-                                        "data": data_registro,
-                                        "distancia": argumentos.get("distancia"),
-                                        "elevacao_acumulada": argumentos.get("elevacao_acumulada"),
-                                        "pace": argumentos.get("pace"),
-                                        "zonas_fc": argumentos.get("zonas_fc"),
-                                        "cadencia_media": argumentos.get("cadencia_media")
-                                    }
-                                    dados_inserir = {k: v for k, v in dados_inserir.items() if v is not None}
-                                    supabase.table("treinos_corrida").insert(dados_inserir).execute()
-                                    st.info(f"💾 Registro de Corrida ({data_registro}) salvo automaticamente!")
-                                    
-                                elif tipo == "crossfit":
-                                    dados_inserir = {
-                                        "data": data_registro,
-                                        "descricao_wod": argumentos.get("descricao_wod"),
-                                        "tempo_score": argumentos.get("tempo_score"),
-                                        "tipo_lpo": argumentos.get("tipo_lpo"),
-                                        "percepcao_esforco": argumentos.get("percepcao_esforco"),
-                                        "alerta_desconforto": argumentos.get("alerta_desconforto")
-                                    }
-                                    dados_inserir = {k: v for k, v in dados_inserir.items() if v is not None}
-                                    supabase.table("treinos_crossfit").insert(dados_inserir).execute()
-                                    st.info(f"💾 Registro de CrossFit ({data_registro}) salvo automaticamente!")
-
-                                mensagens_api.append({
-                                    "role": "tool",
-                                    "tool_call_id": tool_call.id,
-                                    "name": "salvar_treino_automatico",
-                                    "content": json.dumps({"status": "success"})
-                                })
-                        
-                        segunda_resposta = cliente_openai.chat.completions.create(
-                            model=nome_modelo,
-                            messages=mensagens_api
-                        )
-                        resposta_ia = segunda_resposta.choices[0].message.content
+                        tool_call = resposta_mensagem.tool_calls[0]
+                        if tool_call.function.name == "estruturar_analise_treino":
+                            argumentos = json.loads(tool_call.function.arguments)
+                            
+                            # Guarda em cache para a Etapa 4 e 5 de aprovação do usuário
+                            st.session_state.treino_rascunho = argumentos
+                            resposta_ia = f"📖 **Análise Concluída com Sucesso!** Montei um diagnóstico cruzando sua telemetria com seu histórico de saúde do banco. Por favor, revise o painel de aprovação acima para confirmar a gravação no Supabase."
                     else:
                         resposta_ia = resposta_mensagem.content
                     
@@ -285,6 +342,9 @@ with aba_chat:
                         supabase.table("historico_conversas").insert({"role": "assistant", "content": resposta_ia}).execute()
                     except Exception:
                         pass
+                    
+                    if resposta_mensagem.tool_calls:
+                        st.rerun()
                     
                 except Exception as e:
                     st.error(f"Erro ao processar: {e}")
@@ -332,7 +392,6 @@ with aba_docs:
             }
             supabase.table("artigos_metodologia").insert(dados_artigo).execute()
             
-            # Garante o teto de tamanho na memória local imediata após o upload
             st.session_state.contexto_artigos = f"{texto_extraido}\n\n{st.session_state.contexto_artigos}"[:80000]
             st.success(f"📚 Artigo '{arquivo_pdf.name}' lido e persistido permanentemente no Supabase!")
         except Exception as e:
