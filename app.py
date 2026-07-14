@@ -35,12 +35,13 @@ if "mensagens" not in st.session_state:
     except Exception:
         st.session_state.mensagens = []
 
-# --- Carregamento Limpo de Artigos Científicos ---
+# --- ⚡ Carregamento Otimizado de Artigos Científicos (ANTI-CONGELAMENTO) ---
 if "contexto_artigos" not in st.session_state:
     try:
-        artigos_banco = supabase.table("artigos_metodologia").select("conteudo_texto").order("id", desc=True).execute()
+        # Limitado a buscar apenas os 3 artigos mais recentes no startup para não travar a rede e a memória
+        artigos_banco = supabase.table("artigos_metodologia").select("conteudo_texto").order("id", desc=True).limit(3).execute()
         if artigos_banco.data:
-            texto_unificado = "\n\n".join([art["conteudo_texto"] for art in artigos_banco.data])
+            texto_unificado = "\n\n".join([art["conteudo_texto"] for art in artigos_banco.data if art.get("conteudo_texto")])
             st.session_state.contexto_artigos = texto_unificado[:80000]
         else:
             st.session_state.contexto_artigos = ""
