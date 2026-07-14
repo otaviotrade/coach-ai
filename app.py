@@ -54,7 +54,7 @@ except Exception:
 
 st.title("🏋️‍♂️ AI Coach de Treinos")
 
-# Definição das cinco abas do painel principal (Adicionado Resumo de Performance)
+# Definição das cinco abas do painel principal
 aba_chat, aba_performance, aba_pr, aba_docs, aba_cerebro = st.tabs([
     "💬 Coach Chat", 
     "📈 Resumo de Performance",
@@ -155,7 +155,7 @@ with aba_chat:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-    # Modificado: Uso de Formulário com text_area para desabilitar o envio acidental ao apertar "Enter"
+    # Envio via Formulário de Texto para desabilitar o gatilho automático da tecla "Enter"
     with st.form("form_chat", clear_on_submit=True):
         prompt = st.text_area("Fale com seu Coach...", placeholder="Relate as sensações do treino, dores ou envie fotos/gpx usando a área de anexo acima...", height=120)
         botao_enviar = st.form_submit_button("📤 Enviar para Análise do Coach")
@@ -361,7 +361,7 @@ with aba_chat:
                 except Exception as e:
                     st.error(f"Erro ao processar: {e}")
 
-# --- Aba 2: Resumo de Performance Consolidada (NOVA PÁGINA) ---
+# --- Aba 2: Resumo de Performance Consolidada ---
 with aba_performance:
     st.header("📈 Auditoria de Performance & Fraquezas")
     st.write("Esta seção analisa todo o seu banco de dados histórico para expor desequilíbrios, falhas de pacing, inconsistências e erros metodológicos.")
@@ -369,7 +369,6 @@ with aba_performance:
     if st.button("🔍 Rodar Auditoria de Performance da IA", use_container_width=True):
         with st.spinner("Compilando dados do Supabase e processando relatório analítico..."):
             try:
-                # Carregamento massivo das tabelas
                 historico_corrida = supabase.table("treinos_corrida").select("*").order("data", desc=True).limit(10).execute().data
                 historico_cross = supabase.table("treinos_crossfit").select("*").order("data", desc=True).limit(10).execute().data
                 historico_saude = supabase.table("metricas_diarias").select("*").order("data", desc=True).limit(10).execute().data
@@ -421,24 +420,30 @@ with aba_pr:
     with st.form("form_pr", clear_on_submit=True):
         st.write("Registre seu novo PR:")
         data_recorde = st.date_input("Data do Recorde")
-        movimento = st.selectbox("Movimento", ["Snatch", "Clean & Jerk", "Deadlift", "Back Squat", "Front Squat"])
+        
+        # Modificação: Substituído st.selectbox por st.text_input para permitir escrita livre do movimento
+        movimento = st.text_input("Movimento", placeholder="Ex: Snatch, Clean & Jerk, Back Squat, Deadlift...")
+        
         carga = st.number_input("Carga (kg)", min_value=0.0, step=0.5)
         peso_corporal = st.number_input("Seu Peso Corporal no dia (kg)", min_value=0.0, step=0.1)
         botao_salvar = st.form_submit_button("Salvar PR no Banco")
         
         if botao_salvar:
-            dados_pr = {
-                "data_recorde": str(data_recorde),
-                "movimento": movimento,
-                "carga": carga,
-                "peso_corporal": peso_corporal
-            }
-            try:
-                resposta = supabase.table("prs").insert(dados_pr).execute()
-                if hasattr(resposta, 'data') and resposta.data:
-                    st.success(f"🔥 PR de {movimento} ({carga}kg) salvo com sucesso!")
-            except Exception as e:
-                st.error(f"Erro ao salvar no banco: {e}")
+            if not movimento.strip():
+                st.error("Por favor, digite o nome do movimento antes de salvar.")
+            else:
+                dados_pr = {
+                    "data_recorde": str(data_recorde),
+                    "movimento": movimento.strip(),
+                    "carga": carga,
+                    "peso_corporal": peso_corporal
+                }
+                try:
+                    resposta = supabase.table("prs").insert(dados_pr).execute()
+                    if hasattr(resposta, 'data') and resposta.data:
+                        st.success(f"🔥 PR de {movimento.strip()} ({carga}kg) salvo com sucesso!")
+                except Exception as e:
+                    st.error(f"Erro ao salvar no banco: {e}")
 
 # --- Aba 4: Base de Conhecimento ---
 with aba_docs:
