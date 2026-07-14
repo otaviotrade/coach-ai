@@ -329,7 +329,7 @@ with aba_chat:
                                 "image_url": {"url": f"data:image/jpeg;base64,{imagem_base64}"}
                             })
 
-                    # --- CORREÇÃO DE CONTEXTO: Janela de dados estendida de 3 para 30 ---
+                    # --- CORREÇÃO DE CONTEXTO: Janela de dados de treinos ---
                     contexto_maquina = "\n\n[MEMÓRIA DE TREINAMENTO E PROGRESSÃO (ÚLTIMOS 30 TREINOS)]:\n"
                     try:
                         corrida_historico = supabase.table("treinos_corrida").select("data", "distancia", "pace", "zonas_fc").eq("user_id", user_id).order("data", desc=True).limit(30).execute()
@@ -344,7 +344,7 @@ with aba_chat:
                     except Exception:
                         pass
 
-                    # --- CORREÇÃO DE MEMÓRIA: Injeta a planilha de periodização ativa na mente do Coach ---
+                    # --- CORREÇÃO DE MEMÓRIA: Periodização ativa ---
                     plano_ativo = st.session_state.get("plano_periodizacao")
                     contexto_periodizacao = f"\n[PLANO DE PERIODIZAÇÃO EXECUTADO PELO ATLETA]:\n{plano_ativo}\n" if plano_ativo else "\n[PLANO DE PERIODIZAÇÃO]: Nenhum planejamento gerado nesta sessão ainda.\n"
 
@@ -360,7 +360,10 @@ with aba_chat:
                         "O atleta forneceu um histórico estendido de treinos e o plano de periodização científica gerado. "
                         "Use estes dados, cruze as datas dos treinos com o início do planejamento e calcule com precisão em qual semana "
                         "do ciclo/mesociclo nós estamos hoje. Se o atleta perguntar sobre a fase do ciclo ou semana, você DEVE analisar o histórico de corridas/WODs "
-                        "para responder com precisão matemática."
+                        "para responder com precisão matemática.\n\n"
+                        "⚠️ REQUISITO DE SEGURANÇA CRÍTICO:\n"
+                        "Se o usuário estiver apenas fazendo perguntas, tirando dúvidas, batendo papo ou perguntando sobre sua planilha de periodização/semanas, "
+                        "responda diretamente em texto puro. NUNCA, SOB HIPÓTESE ALGUMA, chame a ferramenta 'estruturar_analise_treino' para conversas comuns!"
                     )
                     
                     mensagens_api.append({"role": "system", "content": contexto_sistema})
@@ -370,12 +373,17 @@ with aba_chat:
                     
                     mensagens_api.append({"role": "user", "content": conteudo_mensagem})
 
+                    # Trava estrita na descrição da ferramenta para evitar chamadas falsas
                     tools = [
                         {
                             "type": "function",
                             "function": {
                                 "name": "estruturar_analise_treino",
-                                "description": "Chame esta função obrigatoriamente quando o usuário enviar dados de treino para estruturar o diagnóstico para aprovação.",
+                                "description": (
+                                    "Chame esta função EXCLUSIVAMENTE quando o usuário enviar um relato de um NOVO treino realizado hoje "
+                                    "(ou subir arquivos GPX/fotos de um treino novo) para salvar no banco. NÃO chame esta função para perguntas "
+                                    "conversacionais, dúvidas sobre periodização, relatórios de semanas ou histórico."
+                                ),
                                 "parameters": {
                                     "type": "object",
                                     "properties": {
@@ -606,7 +614,7 @@ with aba_cerebro:
         if botao_salvar_memoria:
             try:
                 supabase.table("memoria_coach").insert({"diretriz": nova_diretriz, "user_id": user_id}).execute()
-                st.success("Cérebro atualizado com sucesso!")
+                st.success("Cérebro updated com sucesso!")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao salvar: {e}")
