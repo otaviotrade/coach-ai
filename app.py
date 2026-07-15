@@ -144,19 +144,23 @@ with aba_chat:
                 if rascunho.get("tipo_treino") == "corrida":
                     st.write(f"**📏 Distância:** {rascunho.get('distancia')} km")
                     st.write(f"**⏱️ Pace Médio:** {rascunho.get('pace')}")
+                    st.write(f"**📍 Local:** {rascunho.get('local', 'Não Informado')}")
                 else:
                     st.write(f"**📝 WOD:** {rascunho.get('descricao_wod')}")
                     st.write(f"**⏱️ Score/Tempo:** {rascunho.get('tempo_score')}")
+                    st.write(f"**⏳ Timecap:** {rascunho.get('timecap', 'Não Informado')}")
             with c_meta2:
                 if rascunho.get("tipo_treino") == "corrida":
-                    st.write(f"**❤️ Frequência:** {rascunho.get('zonas_fc')}")
+                    st.write(f"**❤️ BPM Médio:** {rascunho.get('bpm_medio', 'Não Informado')}")
                     st.write(f"**🔄 Cadência:** {rascunho.get('cadencia_media')} ppm")
-                    st.write(f"**⛰️ Elevação:** {rascunho.get('elevacao_acumulada')} m")
+                    st.write(f"**🌡️ Temp:** {rascunho.get('temperatura', 'Não Informada')} °C")
                 else:
                     st.write(f"**🏋️ LPO Executado:** {rascunho.get('tipo_lpo')}")
-                    st.write(f"**🔥 Percepção de Esforço (RPE):** {rascunho.get('percepcao_esforco')}/10")
+                    st.write(f"**📋 Tipo de WOD:** {rascunho.get('tipo_wod', 'Não Informado')}")
+                    st.write(f"**❤️ BPM Médio:** {rascunho.get('bpm_medio', 'Não Informado')}")
             with c_meta3:
-                st.write(f"**⚠️ Relato de Desconforto:** {rascunho.get('alerta_desconforto', 'Nenhum')}")
+                st.write(f"**🔥 Percepção de Esforço (PSE/RPE):** {rascunho.get('percepcao_esforco') if rascunho.get('percepcao_esforco') else rascunho.get('rpe')}/10")
+                st.write(f"**⚠️ Alerta Desconforto:** {rascunho.get('alerta_desconforto', 'Nenhum')}")
 
             st.markdown(f"---")
             st.markdown(f"**💬 Seu Feedback (Análise do Usuário):**\n*{rascunho.get('analise_usuario', 'Não informado')}*")
@@ -178,7 +182,11 @@ with aba_chat:
                                 "analise_usuario": rascunho.get("analise_usuario"),
                                 "analise_ia": rascunho.get("analise_ia"),
                                 "performance_geral": rascunho.get("performance_geral"),
-                                "user_id": user_id
+                                "user_id": user_id,
+                                "rpe": rascunho.get("rpe") if rascunho.get("rpe") else rascunho.get("percepcao_esforco"),
+                                "temperatura": rascunho.get("temperatura"),
+                                "local": rascunho.get("local"),
+                                "bpm_medio": rascunho.get("bpm_medio")
                             }
                             supabase.table("treinos_corrida").insert({k: v for k, v in payload.items() if v is not None}).execute()
                         else:
@@ -187,12 +195,16 @@ with aba_chat:
                                 "descricao_wod": rascunho.get("descricao_wod"),
                                 "tempo_score": rascunho.get("tempo_score"),
                                 "tipo_lpo": rascunho.get("tipo_lpo"),
-                                "percepcao_esforco": rascunho.get("percepcao_esforco"),
+                                "percepcao_esforco": rascunho.get("percepcao_esforco") if rascunho.get("percepcao_esforco") else rascunho.get("rpe"),
                                 "alerta_desconforto": rascunho.get("alerta_desconforto"),
                                 "analise_usuario": rascunho.get("analise_usuario"),
                                 "analise_ia": rascunho.get("analise_ia"),
                                 "performance_geral": rascunho.get("performance_geral"),
-                                "user_id": user_id
+                                "user_id": user_id,
+                                "timecap": rascunho.get("timecap"),
+                                "tipo_wod": rascunho.get("tipo_wod"),
+                                "partes_dificeis": rascunho.get("partes_dificeis"),
+                                "bpm_medio": rascunho.get("bpm_medio")
                             }
                             supabase.table("treinos_crossfit").insert({k: v for k, v in payload.items() if v is not None}).execute()
                         
@@ -206,6 +218,7 @@ with aba_chat:
                     st.session_state.treino_rascunho = None
                     st.rerun()
 
+    # 2. Área de Upload de Arquivos
     with st.expander("📎 Anexar Mídias ao Chat (Fotos ou Arquivos GPX)", expanded=False):
         c1, c2 = st.columns(2)
         with c1:
@@ -213,19 +226,12 @@ with aba_chat:
         with c2:
             arquivos_gpx = st.file_uploader("📍 Arquivos GPX (Corrida)", type=["gpx"], accept_multiple_files=True, key="chat_gpx")
 
-    st.divider()
-
-    container_chat = st.container()
-
-    with container_chat:
-        for msg in st.session_state.mensagens:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-
+    # 3. Caixa de Entrada do Chat
     with st.form("form_chat", clear_on_submit=True):
         prompt = st.text_area("Fale com seu Coach...", placeholder="Relate as sensações do treino, dores ou envie fotos/gpx usando a área de anexo acima...", height=120)
         botao_enviar = st.form_submit_button("📤 Enviar para Análise do Coach")
     
+    # 4. Motor de Processamento
     if botao_enviar and prompt.strip():
         st.session_state.mensagens.append({"role": "user", "content": prompt})
         try:
@@ -292,163 +298,172 @@ with aba_chat:
                                                         except Exception:
                                                             pass
 
-                                distancia_km = distancia_total_metros / 1000.0
-                                if distancia_km == 0:
-                                    continue
+                        distancia_km = distancia_total_metros / 1000.0
+                        if distancia_km > 0:
+                            dist_arredondada = float(round(distancia_km, 2))
+                            elev_arredondada = float(round(ganho_elevacao_total, 2))
 
-                                dist_arredondada = float(round(distancia_km, 2))
-                                elev_arredondada = float(round(ganho_elevacao_total, 2))
+                            if tempo_total_segundos > 0:
+                                tempo_por_km_segundos = tempo_total_segundos / distancia_km
+                                minutos_pace = int(tempo_por_km_segundos // 60)
+                                segundos_pace = int(tempo_por_km_segundos % 60)
+                                pace_formatado = f"{minutos_pace}:{segundos_pace:02d} min/km"
+                            else:
+                                pace_formatado = "--:-- min/km"
 
-                                if tempo_total_segundos > 0:
-                                    tempo_por_km_segundos = tempo_total_segundos / distancia_km
-                                    minutos_pace = int(tempo_por_km_segundos // 60)
-                                    segundos_pace = int(tempo_por_km_segundos % 60)
-                                    pace_formatado = f"{minutos_pace}:{segundos_pace:02d} min/km"
-                                else:
-                                    pace_formatado = "--:-- min/km"
+                            bpm_medio_str = f"{int(sum(lista_bpm) / len(lista_bpm))} BPM" if lista_bpm else "Sem dados de FC"
+                            cadencia_media = int(sum(lista_cadencia) / len(lista_cadencia)) if lista_cadencia else None
 
-                                bpm_medio_str = f"{int(sum(lista_bpm) / len(lista_bpm))} BPM" if lista_bpm else "Sem dados de FC"
-                                cadencia_media = int(sum(lista_cadencia) / len(lista_cadencia)) if lista_cadencia else None
-
-                                dados_acumulados += f"- Arquivo: {arquivo.name}\n"
-                                dados_acumulados += f"  Data Real: {data_treino} | Distância: {dist_arredondada} km | Altimetria: {elev_arredondada} m\n"
-                                dados_acumulados += f"  Pace Médio Calculado: {pace_formatado} | Frequência Cardíaca: {bpm_medio_str} | Cadência Média: {cadencia_media}\n\n"
-                                    
-                            except Exception as erro_gpx:
-                                dados_acumulados += f"- Erro na decodificação de {arquivo.name}: {erro_gpx}\n"
-                                
-                        prompt_enriquecido += dados_acumulados
-
-                    conteudo_mensagem = [{"type": "text", "text": prompt_enriquecido}]
-
-                    if fotos_treino:
-                        for photo in fotos_treino:
-                            imagem_base64 = processar_imagem_openai(photo)
-                            conteudo_mensagem.append({
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{imagem_base64}"}
-                            })
-
-                    # --- CONTEXTO DE HISTÓRICO DE DADOS ---
-                    contexto_maquina = "\n\n[MEMÓRIA DE TREINAMENTO E PROGRESSÃO (ÚLTIMOS 30 TREINOS)]:\n"
-                    try:
-                        corrida_historico = supabase.table("treinos_corrida").select("data", "distancia", "pace", "zonas_fc").eq("user_id", user_id).order("data", desc=True).limit(30).execute()
-                        cross_historico = supabase.table("treinos_crossfit").select("data", "descricao_wod", "tempo_score", "alerta_desconforto").eq("user_id", user_id).order("data", desc=True).limit(30).execute()
-                        saude_historico = supabase.table("metricas_diarias").select("data", "vfc", "nivel_dor_muscular", "horas_sono").eq("user_id", user_id).order("data", desc=True).limit(10).execute()
-                        prs_historico = supabase.table("prs").select("movimento", "carga").eq("user_id", user_id).execute()
-                        
-                        if corrida_historico.data: contexto_maquina += f"- Histórico Corridas: {corrida_historico.data}\n"
-                        if cross_historico.data: contexto_maquina += f"- Histórico CrossFit (Para avaliação de estresse/fadiga): {cross_historico.data}\n"
-                        if saude_historico.data: contexto_maquina += f"- Histórico Biométrico: {saude_historico.data}\n"
-                        if prs_historico.data: contexto_maquina += f"- Recordes Atuais (PRs) de LPO: {prs_historico.data}\n"
-                    except Exception:
-                        pass
-
-                    # --- CONTEXTO DE PERIODIZAÇÃO ---
-                    plano_ativo = st.session_state.get("plano_periodizacao")
-                    contexto_periodizacao = f"\n[PLANO DE PERIODIZAÇÃO EXECUTADO PELO ATLETA]:\n{plano_ativo}\n" if plano_ativo else "\n[PLANO DE PERIODIZAÇÃO]: Nenhum planejamento gerado nesta sessão ainda.\n"
-
-                    mensagens_api = []
-                    contexto_sistema = f"{memoria_central}\nData atual do sistema: {str(date.today())}.\n{contexto_maquina}\n{contexto_periodizacao}\n"
-                    contexto_sistema += (
-                        "INSTRUÇÃO DE COMPORTAMENTO CRÍTICO (SEVERO):\n"
-                        "Você é um Coach de Elite extremamente técnico, rigoroso e cientificamente inflexível. "
-                        "Sua prioridade total é identificar falhas metodológicas, erros de pacing (ritmo), assimetria mecânica, "
-                        "queda abrupta de cadência, excesso de fadiga acumulada por má qualidade do sono/VFC, e sinais de sobrecarga articular.\n\n"
-                        "🚫 REGRA ABSOLUTA DE PRESCRIÇÃO E CRIAÇÃO (RESTRIÇÃO DE CROSSFIT):\n"
-                        "Você NUNCA deve prescrever, planejar, propor ou criar novos treinos de CrossFit, musculação ou LPO. "
-                        "Sua capacidade de criação, estruturação de ciclos, planilhas e prescrição de novos treinos é ESTREITAMENTE LIMITADA À CORRIDA.\n"
-                        "Os treinos de CrossFit do histórico servem EXCLUSIVAMENTE para que você possa avaliar o estresse mecânico, "
-                        "metabólico, fadiga do sistema nervoso central (SNC) e desgaste muscular. "
-                        "Se o usuário pedir para você criar um treino de CrossFit ou LPO, recuse educadamente, explicando que seu escopo "
-                        "científico de criação é 100% focado em Corrida, e que o CrossFit é usado apenas para monitorar o seu estresse e recuperação.\n\n"
-                        "💡 SOBRE O CICLO ATUAL:\n"
-                        "Analise o histórico e a periodização para calcular as fases e semanas de corrida, ajustando o volume de corrida de acordo com o desgaste acumulado no CrossFit."
-                        "\n\n⚠️ REQUISITO DE SEGURANÇA CRÍTICO CONTRA ALUCINAÇÃO DE REGISTRO:\n"
-                        "- Se o usuário pedir para você criar, prescrever, planejar, sugerir ou detalhar um treino para o futuro (ex: 'crie meu treino de quinta', 'o que eu treino amanhã?'), "
-                        "você deve gerar a prescrição e os detalhes do treino diretamente em TEXTO PURO no chat. NUNCA chame a função 'registrar_treino_realizado_no_banco' para treinos futuros!\n"
-                        "- A função 'registrar_treino_realizado_no_banco' serve EXCLUSIVAMENTE para quando o atleta estiver enviando dados de telemetria, GPX, fotos ou um relato detalhado de um treino que ele JÁ CONCLUIU (passado), para salvar no banco de dados."
-                    )
-                    
-                    mensagens_api.append({"role": "system", "content": contexto_sistema})
-                    
-                    for msg_historico in st.session_state.mensagens[:-1]:
-                        mensagens_api.append({"role": msg_historico["role"], "content": msg_historico["content"]})
-                    
-                    mensagens_api.append({"role": "user", "content": conteudo_mensagem})
-
-                    # Mudança do nome do Tool para registrar_treino_realizado_no_banco para clareza semântica
-                    tools = [
-                        {
-                            "type": "function",
-                            "function": {
-                                "name": "registrar_treino_realizado_no_banco",
-                                "description": (
-                                    "Chame esta função EXCLUSIVAMENTE quando o usuário enviar dados de telemetria ou um relato detalhado de um treino que ele "
-                                    "JÁ REALIZOU E TERMINOU para salvar no banco de dados. NÃO chame esta função para pedidos de novos treinos, dúvidas sobre "
-                                    "periodização, relatórios de semanas ou planejamentos futuros."
-                                ),
-                                "parameters": {
-                                    "type": "object",
-                                    "properties": {
-                                        "tipo_treino": {"type": "string", "enum": ["corrida", "crossfit"]},
-                                        "data": {"type": "string", "description": "Data do treino concluído (YYYY-MM-DD)."},
-                                        "distancia": {"type": "number"},
-                                        "elevacao_acumulada": {"type": "number"},
-                                        "pace": {"type": "string"},
-                                        "zonas_fc": {"type": "string"},
-                                        "cadencia_media": {"type": "integer"},
-                                        "descricao_wod": {"type": "string"},
-                                        "tempo_score": {"type": "string"},
-                                        "tipo_lpo": {"type": "string"},
-                                        "percepcao_esforco": {"type": "integer"},
-                                        "alerta_desconforto": {"type": "string"},
-                                        "analise_usuario": {"type": "string", "description": "Relato detalhado fornecido pelo aluno sobre as sensações dele no treino feito."},
-                                        "analise_ia": {"type": "string", "description": "Diagnóstico biomecânico e fisiológico ultra crítico do treino realizado, apontando falhas de ritmo ou volume de forma dura."},
-                                        "performance_geral": {"type": "string", "description": "Cruzamento comparativo do treino executado com os recordes históricos."}
-                                    },
-                                    "required": ["tipo_treino", "data", "analise_ia", "performance_geral"]
-                                }
-                            }
-                        }
-                    ]
-
-                    resposta_openai = cliente_openai.chat.completions.create(
-                        model=nome_modelo,
-                        messages=mensagens_api,
-                        tools=tools,
-                        tool_choice="auto"
-                    )
-                    
-                    resposta_mensagem = resposta_openai.choices[0].message
-                    
-                    if resposta_mensagem.tool_calls:
-                        tool_call = resposta_mensagem.tool_calls[0]
-                        if tool_call.function.name == "registrar_treino_realizado_no_banco":
-                            argumentos = json.loads(tool_call.function.arguments)
+                            dados_acumulados += f"- Arquivo: {arquivo.name}\n"
+                            dados_acumulados += f"  Data Real: {data_treino} | Distância: {dist_arredondada} km | Altimetria: {elev_arredondada} m\n"
+                            dados_acumulados += f"  Pace Médio Calculado: {pace_formatado} | Frequência Cardíaca: {bpm_medio_str} | Cadência Média: {cadencia_media}\n\n"
                             
-                            st.session_state.treino_rascunho = argumentos
-                            resposta_ia = f"📖 **Análise Concluída com Sucesso!** Montei um diagnóstico cruzando sua telemetria com seu histórico de saúde do banco. Por favor, revise o painel de aprovação acima para confirmar a gravação no Supabase."
-                    else:
-                        resposta_ia = resposta_mensagem.content
-                    
-                    st.markdown(resposta_ia)
-                    st.session_state.mensagens.append({"role": "assistant", "content": resposta_ia})
-                    try:
-                        supabase.table("historico_conversas").insert({"role": "assistant", "content": resposta_ia, "user_id": user_id}).execute()
-                    except Exception:
-                        pass
-                    
-                    if resposta_mensagem.tool_calls:
-                        st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"Erro ao processar: {e}")
+                    except Exception as erro_gpx:
+                        dados_acumulados += f"- Erro na decodificação de {arquivo.name}: {erro_gpx}\n"
+                        
+                prompt_enriquecido += dados_acumulados
+
+            conteudo_mensagem = [{"type": "text", "text": prompt_enriquecido}]
+
+            if fotos_treino:
+                for photo in fotos_treino:
+                    imagem_base64 = processar_imagem_openai(photo)
+                    conteudo_mensagem.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{imagem_base64}"}
+                    })
+
+            # --- CONTEXTO DE HISTÓRICO DE DADOS ---
+            contexto_maquina = "\n\n[MEMÓRIA DE TREINAMENTO E PROGRESSÃO (ÚLTIMOS 30 TREINOS)]:\n"
+            try:
+                corrida_historico = supabase.table("treinos_corrida").select("data", "distancia", "pace", "zonas_fc").eq("user_id", user_id).order("data", desc=True).limit(30).execute()
+                cross_historico = supabase.table("treinos_crossfit").select("data", "descricao_wod", "tempo_score", "alerta_desconforto").eq("user_id", user_id).order("data", desc=True).limit(30).execute()
+                saude_historico = supabase.table("metricas_diarias").select("data", "vfc", "nivel_dor_muscular", "horas_sono").eq("user_id", user_id).order("data", desc=True).limit(10).execute()
+                prs_historico = supabase.table("prs").select("movimento", "carga").eq("user_id", user_id).execute()
+                
+                if corrida_historico.data: contexto_maquina += f"- Histórico Corridas: {corrida_historico.data}\n"
+                if cross_historico.data: contexto_maquina += f"- Histórico CrossFit (Para avaliação de estresse/fadiga): {cross_historico.data}\n"
+                if saude_historico.data: contexto_maquina += f"- Histórico Biométrico: {saude_historico.data}\n"
+                if prs_historico.data: contexto_maquina += f"- Recordes Atuais (PRs) de LPO: {prs_historico.data}\n"
+            except Exception:
+                pass
+
+            # --- CONTEXTO DE PERIODIZAÇÃO ---
+            plano_ativo = st.session_state.get("plano_periodizacao")
+            contexto_periodizacao = f"\n[PLANO DE PERIODIZAÇÃO EXECUTADO PELO ATLETA]:\n{plano_ativo}\n" if plano_ativo else "\n[PLANO DE PERIODIZAÇÃO]: Nenhum planejamento gerado nesta sessão ainda.\n"
+
+            mensagens_api = []
+            contexto_sistema = f"{memoria_central}\nData atual do sistema: {str(date.today())}.\n{contexto_maquina}\n{contexto_periodizacao}\n"
+            contexto_sistema += (
+                "INSTRUÇÃO DE COMPORTAMENTO CRÍTICO (SEVERO E METICULOSO):\n"
+                "Você é um Coach de Elite extremamente técnico, rigoroso e cientificamente inflexível. "
+                "Sua prioridade total é identificar falhas metodológicas, erros de pacing, assimetria mecânica e fadiga do SNC.\n\n"
+                "🚫 RESTRIÇÃO DE CROSSFIT:\n"
+                "Você NUNCA prescreve novos treinos de CrossFit/LPO. O CrossFit do histórico serve APENAS para monitorar estresse e desgaste muscular.\n\n"
+                "🚧 REGRA CRÍTICA DE VALIDAÇÃO DE 80% DE DADOS (ANTI-PREGUIÇA):\n"
+                "Antes de registrar qualquer treino pós-esforço no banco de dados, você deve garantir que possui pelo menos 80% (6 das 8 variáveis) do checklist preenchido.\n"
+                "**Checklist de Corrida:**\n"
+                "1. Distância\n2. Pace\n3. BPM Médio\n4. Cadência\n5. PSE/RPE (Escala de esforço de 1 a 10)\n6. Temperatura\n7. Local do Treino (Esteira, Rua, Pista, etc.)\n8. Sensação Geral do Atleta (Breve descrição das partes difíceis)\n\n"
+                "**Checklist de CrossFit:**\n"
+                "1. Descrição do WOD\n2. Tipo de WOD (AMRAP, For Time, EMOM, etc.)\n3. Timecap\n4. Score/Tempo do Atleta\n5. BPM Médio\n6. PSE/RPE (Escala de esforço de 1 a 10)\n7. Sensação Geral do Atleta\n8. Parte mais difícil do WOD (onde o neural/motor quebrou)\n\n"
+                "⚠️ COMPORTAMENTO SEGUNDO O CHECKLIST:\n"
+                "- Se o relato do usuário ou os dados GPX NÃO cobrirem pelo menos 80% das métricas listadas acima para a modalidade do treino relatado, você está TERMINANTEMENTE PROIBIDO de chamar a função 'registrar_treino_realizado_no_banco'.\n"
+                "- Em vez de registrar, você deve responder em texto conversacional no chat listando os dados que estão faltando de forma didática, explicando o valor científico de cada um para sua análise e solicitando as respostas.\n"
+                "- Exceção: Se o usuário disser de forma expressa que não tem os dados e mandar prosseguir assim mesmo, você está autorizado a acionar a função com os dados parciais."
+            )
+            
+            mensagens_api.append({"role": "system", "content": contexto_sistema})
+            
+            for msg_historico in st.session_state.mensagens[:-1]:
+                mensagens_api.append({"role": msg_historico["role"], "content": msg_historico["content"]})
+            
+            mensagens_api.append({"role": "user", "content": conteudo_mensagem})
+
+            tools = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "registrar_treino_realizado_no_banco",
+                        "description": (
+                            "Chame esta função EXCLUSIVAMENTE quando o checklist de validação de dados de treino estiver com pelo menos 80% "
+                            "de preenchimento (ou por autorização expressa do atleta) para salvar no banco de dados."
+                        ),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "tipo_treino": {"type": "string", "enum": ["corrida", "crossfit"]},
+                                "data": {"type": "string", "description": "Data do treino concluído (YYYY-MM-DD)."},
+                                "distancia": {"type": "number"},
+                                "elevacao_acumulada": {"type": "number"},
+                                "pace": {"type": "string"},
+                                "zonas_fc": {"type": "string"},
+                                "cadencia_media": {"type": "integer"},
+                                "descricao_wod": {"type": "string"},
+                                "tempo_score": {"type": "string"},
+                                "tipo_lpo": {"type": "string"},
+                                "percepcao_esforco": {"type": "integer", "description": "Equivalente ao RPE/PSE do treino (1-10)."},
+                                "alerta_desconforto": {"type": "string"},
+                                "analise_usuario": {"type": "string", "description": "Relato de sensações e feedbacks do usuário."},
+                                "analise_ia": {"type": "string", "description": "Análise biomecânica e fisiológica rigorosa."},
+                                "performance_geral": {"type": "string", "description": "Análise cruzada com histórico de sono e PRs."},
+                                # NOVOS CAMPOS ISOLADOS PARA METRICAS MINUCIOSAS
+                                "rpe": {"type": "integer"},
+                                "temperatura": {"type": "number"},
+                                "local": {"type": "string"},
+                                "bpm_medio": {"type": "integer"},
+                                "timecap": {"type": "string"},
+                                "tipo_wod": {"type": "string"},
+                                "partes_dificeis": {"type": "string"}
+                            },
+                            "required": ["tipo_treino", "data", "analise_ia", "performance_geral"]
+                        }
+                    }
+                }
+            ]
+
+            resposta_openai = cliente_openai.chat.completions.create(
+                model=nome_modelo,
+                messages=mensagens_api,
+                tools=tools,
+                tool_choice="auto"
+            )
+            
+            resposta_mensagem = resposta_openai.choices[0].message
+            
+            if resposta_mensagem.tool_calls:
+                tool_call = resposta_mensagem.tool_calls[0]
+                if tool_call.function.name == "registrar_treino_realizado_no_banco":
+                    argumentos = json.loads(tool_call.function.arguments)
+                    st.session_state.treino_rascunho = argumentos
+                    resposta_ia = f"📖 **Análise Concluída com Sucesso!** Montei um diagnóstico cruzando sua telemetria com seu histórico de saúde do banco. Por favor, revise o painel de aprovação acima para confirmar a gravação no Supabase."
+            else:
+                resposta_ia = resposta_mensagem.content
+            
+            st.session_state.mensagens.append({"role": "assistant", "content": resposta_ia})
+            try:
+                supabase.table("historico_conversas").insert({"role": "assistant", "content": resposta_ia, "user_id": user_id}).execute()
+            except Exception:
+                pass
+            
+            if resposta_mensagem.tool_calls:
+                st.rerun()
+            
+        except Exception as e:
+            st.error(f"Erro ao processar: {e}")
+
+    st.divider()
+
+    # 5. Histórico de Conversas (Fica na parte de baixo)
+    container_chat = st.container()
+    with container_chat:
+        for msg in st.session_state.mensagens:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
 # --- Aba 2: Resumo de Performance Consolidada ---
 with aba_performance:
     st.header("📈 Auditoria de Performance & Fraquezas")
-    st.write("Esta seção analisa todo o seu banco de dados histórico para expor desequilíbosos, falhas de pacing, inconsistências e erros metodológicos.")
+    st.write("Esta seção analisa todo o seu banco de dados histórico para expor desequilíbrios, falhas de pacing, inconsistências e erros metodológicos.")
 
     if st.button("🔍 Rodar Auditoria de Performance da IA", use_container_width=True):
         with st.spinner("Compilando dados do Supabase e processando relatório analítico..."):
