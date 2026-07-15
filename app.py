@@ -131,95 +131,7 @@ aba_chat, aba_performance, aba_periodizacao, aba_pr, aba_docs, aba_cerebro = st.
 
 # --- Aba 1: Coach Chat ---
 with aba_chat:
-    # 1. Alerta de aprovação de rascunhos (Mantido no topo como aviso prioritário)
-    if st.session_state.treino_rascunho:
-        rascunho = st.session_state.treino_rascunho
-        tipo_formatado = "🏃‍♂️ CORRIDA" if rascunho.get("tipo_treino") == "corrida" else "🏋️‍♂️ CROSSFIT"
-        
-        with st.container(border=True):
-            st.warning(f"📋 **Diagnóstico de Treino Gerado ({tipo_formatado}) - Aguardando sua Aprovação para Salvar:**")
-            
-            c_meta1, c_meta2, c_meta3 = st.columns(3)
-            with c_meta1:
-                st.write(f"**📅 Data:** {rascunho.get('data')}")
-                if rascunho.get("tipo_treino") == "corrida":
-                    st.write(f"**📏 Distância:** {rascunho.get('distancia')} km")
-                    st.write(f"**⏱️ Pace Médio:** {rascunho.get('pace')}")
-                    st.write(f"**📍 Local:** {rascunho.get('local', 'Não Informado')}")
-                else:
-                    st.write(f"**📝 WOD:** {rascunho.get('descricao_wod')}")
-                    st.write(f"**⏱️ Score/Tempo:** {rascunho.get('tempo_score')}")
-                    st.write(f"**⏳ Timecap:** {rascunho.get('timecap', 'Não Informado')}")
-            with c_meta2:
-                if rascunho.get("tipo_treino") == "corrida":
-                    st.write(f"**❤️ BPM Médio:** {rascunho.get('bpm_medio', 'Não Informado')}")
-                    st.write(f"**🔄 Cadência:** {rascunho.get('cadencia_media')} ppm")
-                    st.write(f"**🌡️ Temp:** {rascunho.get('temperatura', 'Não Informada')} °C")
-                else:
-                    st.write(f"**🏋️ LPO Executado:** {rascunho.get('tipo_lpo')}")
-                    st.write(f"**📋 Tipo de WOD:** {rascunho.get('tipo_wod', 'Não Informado')}")
-                    st.write(f"**❤️ BPM Médio:** {rascunho.get('bpm_medio', 'Não Informado')}")
-            with c_meta3:
-                st.write(f"**🔥 Percepção de Esforço (PSE/RPE):** {rascunho.get('percepcao_esforco') if rascunho.get('percepcao_esforco') else rascunho.get('rpe')}/10")
-                st.write(f"**⚠️ Alerta Desconforto:** {rascunho.get('alerta_desconforto', 'Nenhum')}")
-
-            st.markdown(f"---")
-            st.markdown(f"**💬 Seu Feedback (Análise do Usuário):**\n*{rascunho.get('analise_usuario', 'Não informado')}*")
-            st.markdown(f"**🧠 Análise Crítica do Coach (IA):**\n{rascunho.get('analise_ia')}")
-            st.markdown(f"**📈 Relatório de Performance Geral (Histórico + Atual):**\n{rascunho.get('performance_geral')}")
-            
-            c_btn1, c_btn2 = st.columns(2)
-            with c_btn1:
-                if st.button("✅ Aprovar e Gravar no Supabase", use_container_width=True, key="btn_confirmar_banco"):
-                    try:
-                        if rascunho.get("tipo_treino") == "corrida":
-                            payload = {
-                                "data": rascunho.get("data"),
-                                "distancia": rascunho.get("distancia"),
-                                "elevacao_acumulada": rascunho.get("elevacao_acumulada"),
-                                "pace": rascunho.get("pace"),
-                                "zonas_fc": rascunho.get("zonas_fc"),
-                                "cadencia_media": rascunho.get("cadencia_media"),
-                                "analise_usuario": rascunho.get("analise_usuario"),
-                                "analise_ia": rascunho.get("analise_ia"),
-                                "performance_geral": rascunho.get("performance_geral"),
-                                "user_id": user_id,
-                                "rpe": rascunho.get("rpe") if rascunho.get("rpe") else rascunho.get("percepcao_esforco"),
-                                "temperatura": rascunho.get("temperatura"),
-                                "local": rascunho.get("local"),
-                                "bpm_medio": rascunho.get("bpm_medio")
-                            }
-                            supabase.table("treinos_corrida").insert({k: v for k, v in payload.items() if v is not None}).execute()
-                        else:
-                            payload = {
-                                "data": rascunho.get("data"),
-                                "descricao_wod": rascunho.get("descricao_wod"),
-                                "tempo_score": rascunho.get("tempo_score"),
-                                "tipo_lpo": rascunho.get("tipo_lpo"),
-                                "percepcao_esforco": rascunho.get("percepcao_esforco") if rascunho.get("percepcao_esforco") else rascunho.get("rpe"),
-                                "alerta_desconforto": rascunho.get("alerta_desconforto"),
-                                "analise_usuario": rascunho.get("analise_usuario"),
-                                "analise_ia": rascunho.get("analise_ia"),
-                                "performance_geral": rascunho.get("performance_geral"),
-                                "user_id": user_id,
-                                "timecap": rascunho.get("timecap"),
-                                "tipo_wod": rascunho.get("tipo_wod"),
-                                "partes_dificeis": rascunho.get("partes_dificeis"),
-                                "bpm_medio": rascunho.get("bpm_medio")
-                            }
-                            supabase.table("treinos_crossfit").insert({k: v for k, v in payload.items() if v is not None}).execute()
-                        
-                        st.success("🎉 Dados de telemetria e análises críticas salvos com sucesso no Supabase!")
-                        st.session_state.treino_rascunho = None
-                        st.rerun()
-                    except Exception as erro_banco:
-                        st.error(f"Falha ao persistir dados: {erro_banco}")
-            with c_btn2:
-                if st.button("❌ Descartar e Ajustar Informações", use_container_width=True, key="btn_limpar_rascunho"):
-                    st.session_state.treino_rascunho = None
-                    st.rerun()
-
-    # 2. Área de Upload de Arquivos
+    # 1. ÁREA DE INPUT: Expander de Anexos (Topo da Tela)
     with st.expander("📎 Anexar Mídias ao Chat (Fotos ou Arquivos GPX)", expanded=False):
         c1, c2 = st.columns(2)
         with c1:
@@ -227,12 +139,12 @@ with aba_chat:
         with c2:
             arquivos_gpx = st.file_uploader("📍 Arquivos GPX (Corrida)", type=["gpx"], accept_multiple_files=True, key="chat_gpx")
 
-    # 3. Caixa de Entrada do Chat
+    # 2. ÁREA DE INPUT: Caixa de Escrita do Usuário (Topo da Tela)
     with st.form("form_chat", clear_on_submit=True):
         prompt = st.text_area("Fale com seu Coach...", placeholder="Relate as sensações do treino, dores ou envie fotos/gpx usando a área de anexo acima...", height=120)
         botao_enviar = st.form_submit_button("📤 Enviar para Análise do Coach")
     
-    # 4. Motor de Processamento
+    # Processador do Motor do Coach (Roda nos bastidores ao submeter)
     if botao_enviar and prompt.strip():
         st.session_state.mensagens.append({"role": "user", "content": prompt})
         try:
@@ -447,12 +359,100 @@ with aba_chat:
             except Exception as e:
                 st.error(f"Erro ao processar: {e}")
 
+    # 3. DIAGNÓSTICO DO TREINO (Se aplicável, renderiza no meio, logo abaixo da escrita)
+    if st.session_state.treino_rascunho:
+        rascunho = st.session_state.treino_rascunho
+        tipo_formatado = "🏃‍♂️ CORRIDA" if rascunho.get("tipo_treino") == "corrida" else "🏋️‍♂️ CROSSFIT"
+        
+        with st.container(border=True):
+            st.warning(f"📋 **Diagnóstico de Treino Gerado ({tipo_formatado}) - Aguardando sua Aprovação para Salvar:**")
+            
+            c_meta1, c_meta2, c_meta3 = st.columns(3)
+            with c_meta1:
+                st.write(f"**📅 Data:** {rascunho.get('data')}")
+                if rascunho.get("tipo_treino") == "corrida":
+                    st.write(f"**📏 Distância:** {rascunho.get('distancia')} km")
+                    st.write(f"**⏱️ Pace Médio:** {rascunho.get('pace')}")
+                    st.write(f"**📍 Local:** {rascunho.get('local', 'Não Informado')}")
+                else:
+                    st.write(f"**📝 WOD:** {rascunho.get('descricao_wod')}")
+                    st.write(f"**⏱️ Score/Tempo:** {rascunho.get('tempo_score')}")
+                    st.write(f"**⏳ Timecap:** {rascunho.get('timecap', 'Não Informado')}")
+            with c_meta2:
+                if rascunho.get("tipo_treino") == "corrida":
+                    st.write(f"**❤️ BPM Médio:** {rascunho.get('bpm_medio', 'Não Informado')}")
+                    st.write(f"**🔄 Cadência:** {rascunho.get('cadencia_media')} ppm")
+                    st.write(f"**🌡️ Temp:** {rascunho.get('temperatura', 'Não Informada')} °C")
+                else:
+                    st.write(f"**🏋️ LPO Executado:** {rascunho.get('tipo_lpo')}")
+                    st.write(f"**📋 Tipo de WOD:** {rascunho.get('tipo_wod', 'Não Informado')}")
+                    st.write(f"**❤️ BPM Médio:** {rascunho.get('bpm_medio', 'Não Informado')}")
+            with c_meta3:
+                st.write(f"**🔥 Percepção de Esforço (PSE/RPE):** {rascunho.get('percepcao_esforco') if rascunho.get('percepcao_esforco') else rascunho.get('rpe')}/10")
+                st.write(f"**⚠️ Alerta Desconforto:** {rascunho.get('alerta_desconforto', 'Nenhum')}")
+
+            st.markdown(f"---")
+            st.markdown(f"**💬 Seu Feedback (Análise do Usuário):**\n*{rascunho.get('analise_usuario', 'Não informado')}*")
+            st.markdown(f"**🧠 Análise Crítica do Coach (IA):**\n{rascunho.get('analise_ia')}")
+            st.markdown(f"**📈 Relatório de Performance Geral (Histórico + Atual):**\n{rascunho.get('performance_geral')}")
+            
+            c_btn1, c_btn2 = st.columns(2)
+            with c_btn1:
+                if st.button("✅ Aprovar e Gravar no Supabase", use_container_width=True, key="btn_confirmar_banco"):
+                    try:
+                        if rascunho.get("tipo_treino") == "corrida":
+                            payload = {
+                                "data": rascunho.get("data"),
+                                "distancia": rascunho.get("distancia"),
+                                "elevacao_acumulada": rascunho.get("elevacao_acumulada"),
+                                "pace": rascunho.get("pace"),
+                                "zonas_fc": rascunho.get("zonas_fc"),
+                                "cadencia_media": rascunho.get("cadencia_media"),
+                                "analise_usuario": rascunho.get("analise_usuario"),
+                                "analise_ia": rascunho.get("analise_ia"),
+                                "performance_geral": rascunho.get("performance_geral"),
+                                "user_id": user_id,
+                                "rpe": rascunho.get("rpe") if rascunho.get("rpe") else rascunho.get("percepcao_esforco"),
+                                "temperatura": rascunho.get("temperatura"),
+                                "local": rascunho.get("local"),
+                                "bpm_medio": rascunho.get("bpm_medio")
+                            }
+                            supabase.table("treinos_corrida").insert({k: v for k, v in payload.items() if v is not None}).execute()
+                        else:
+                            payload = {
+                                "data": rascunho.get("data"),
+                                "descricao_wod": rascunho.get("descricao_wod"),
+                                "tempo_score": rascunho.get("tempo_score"),
+                                "tipo_lpo": rascunho.get("tipo_lpo"),
+                                "percepcao_esforco": rascunho.get("percepcao_esforco") if rascunho.get("percepcao_esforco") else rascunho.get("rpe"),
+                                "alerta_desconforto": rascunho.get("alerta_desconforto"),
+                                "analise_usuario": rascunho.get("analise_usuario"),
+                                "analise_ia": rascunho.get("analise_ia"),
+                                "performance_geral": rascunho.get("performance_geral"),
+                                "user_id": user_id,
+                                "timecap": rascunho.get("timecap"),
+                                "tipo_wod": rascunho.get("tipo_wod"),
+                                "partes_dificeis": rascunho.get("partes_dificeis"),
+                                "bpm_medio": rascunho.get("bpm_medio")
+                            }
+                            supabase.table("treinos_crossfit").insert({k: v for k, v in payload.items() if v is not None}).execute()
+                        
+                        st.success("🎉 Dados de telemetria e análises críticas salvos com sucesso no Supabase!")
+                        st.session_state.treino_rascunho = None
+                        st.rerun()
+                    except Exception as erro_banco:
+                        st.error(f"Falha ao persistir dados: {erro_banco}")
+            with c_btn2:
+                if st.button("❌ Descartar e Ajustar Informações", use_container_width=True, key="btn_limpar_rascunho"):
+                    st.session_state.treino_rascunho = None
+                    st.rerun()
+
     st.divider()
 
-    # 5. Histórico de Conversas (Fica na parte de baixo de forma natural)
+    # 4. HISTÓRICO DE CONVERSAS (Em ordem reversa: Novas em CIMA, Antigas em BAIXO)
     container_chat = st.container()
     with container_chat:
-        for msg in st.session_state.mensagens:
+        for msg in reversed(st.session_state.mensagens):
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
